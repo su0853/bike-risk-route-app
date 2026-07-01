@@ -158,6 +158,11 @@ android {
     }
 }
 
+// Navigation SDK bundles its own Maps SDK — exclude the standalone one to avoid duplicate classes
+configurations.all {
+    exclude group: 'com.google.android.gms', module: 'play-services-maps'
+}
+
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.4")
 
