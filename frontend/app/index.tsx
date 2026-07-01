@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SearchForm } from '../components/SearchForm';
 import { GeocoderResult } from '../services/geocoder';
 import { NavigateRequest } from '../types/navigation';
@@ -30,6 +30,13 @@ export default function IndexScreen() {
         <Text style={styles.subtitle}>輸入起終點，系統將推薦最安全的騎行路線</Text>
       </View>
       <SearchForm loading={loading} onSearch={handleSearch} />
+      <TouchableOpacity
+        style={styles.devBtn}
+        onPress={() => router.push('/nav_prototype')}
+      >
+        <Text style={styles.devBtnText}>[Dev] Navigation SDK Prototype</Text>
+      </TouchableOpacity>
+
       <View style={styles.tips}>
         <Text style={styles.tipsTitle}>使用說明</Text>
         <Text style={styles.tip}>• 輸入地址後點「查詢」，從候選清單選擇正確地點</Text>
@@ -79,5 +86,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#1e40af',
     lineHeight: 20,
+  },
+  devBtn: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    padding: 10,
+    backgroundColor: '#1e293b',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  devBtnText: {
+    color: '#94a3b8',
+    fontSize: 12,
   },
 });

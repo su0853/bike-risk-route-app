@@ -22,9 +22,6 @@ frontend/node_modules/
 frontend/.expo/
 *.tgz
 
-# ── Expo 原生目錄（prebuild 產生，後期加入）─────────────────
-frontend/android/
-frontend/ios/
 
 # ── OSMnx / requests-cache ────────────────────────────────────
 backend/cache/
