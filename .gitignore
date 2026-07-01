@@ -1,0 +1,39 @@
+# ── Python ────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+*.egg-info/
+dist/
+build/
+
+# ── 大型資料檔（本地保留，不上傳）────────────────────────────
+backend/data/raw/
+backend/data/processed/
+
+# ── 機密 ──────────────────────────────────────────────────────
+.env
+backend/.env
+
+# ── Node / Expo ───────────────────────────────────────────────
+node_modules/
+frontend/node_modules/
+.expo/
+frontend/.expo/
+*.tgz
+
+# ── Expo 原生目錄（prebuild 產生，後期加入）─────────────────
+frontend/android/
+frontend/ios/
+
+# ── OSMnx / requests-cache ────────────────────────────────────
+backend/cache/
+
+# ── Claude Code 本地設定 ──────────────────────────────────────
+.claude/
+
+# ── 系統 ──────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.log
+nohup.out
