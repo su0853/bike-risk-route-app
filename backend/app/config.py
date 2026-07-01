@@ -13,13 +13,6 @@ class Settings(BaseSettings):
     ROADS_GDF_PATH: str = "data/processed/roads_gdf.pkl"
     RISK_SCORES_PATH: str = "data/processed/risk_scores.json"
 
-    # 路由圖下載範圍 (osmnx bbox: north, south, east, west)
-    # 預設台北市/台北縣範圍；可擴展至全台
-    ROUTING_BBOX_NORTH: float = 25.22
-    ROUTING_BBOX_SOUTH: float = 24.95
-    ROUTING_BBOX_EAST: float = 121.68
-    ROUTING_BBOX_WEST: float = 121.42
-
     # 道路篩選 — 排除不適合自行車的道路類型
     EXCLUDED_FCLASSES: list[str] = [
         "motorway", "motorway_link", "trunk", "trunk_link",
