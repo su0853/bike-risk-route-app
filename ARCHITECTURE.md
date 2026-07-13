@@ -193,7 +193,39 @@ coords = np.array([[d["x"], d["y"]] for _, d in G.nodes(data=True)])
 _node_tree = cKDTree(coords)  # EPSG:3857 座標
 ```
 
-用途：將 WGS84 座標快速對應至最近圖節點（O(log n)）。
+#### KDTree 的用途：座標吸附到路網節點
+
+前端送進 `/api/navigate` 的起終點是一般 WGS84 經緯度：
+
+```json
+{
+  "start": { "lat": 25.033, "lon": 121.565 },
+  "end": { "lat": 25.047, "lon": 121.517 }
+}
+```
+
+但 Dijkstra 不能直接從任意經緯度開始計算，它只能在 NetworkX 圖上的節點之間尋路。因此在真正計算路線前，需要先把使用者座標「吸附」到最近的路網節點：
+
+```
+使用者起點 lat/lon → 最近圖節點 start_node
+使用者終點 lat/lon → 最近圖節點 end_node
+start_node + end_node → Dijkstra shortest_path()
+```
+
+若沒有 KDTree，每次查詢最近節點都要掃過全部圖節點並逐一計算距離；目前路網約有 131 萬個節點，這會讓每次路線請求變慢。
+
+KDTree 在服務啟動時先把所有節點座標建立成空間索引。查詢時只要將前端 WGS84 經緯度轉成 EPSG:3857 公尺座標，再呼叫 `query()` 即可快速取得最近節點：
+
+```python
+# get_nearest_node()
+x_m, y_m = _transformer_to_3857.transform(lon, lat)
+_, idx = _node_tree.query([x_m, y_m])
+nearest_node = _node_ids[idx]
+```
+
+這裡需要轉換座標系，是因為前端使用 WGS84（單位是經緯度），而路網節點與 KDTree 使用 EPSG:3857（單位接近公尺），後者較適合做距離查詢。
+
+簡化來說，KDTree 是「GPS 座標 → 最近路網節點」的快速查找器，讓路線規劃可以從使用者實際輸入的位置接到可計算的路網圖上。
 
 ---
 
