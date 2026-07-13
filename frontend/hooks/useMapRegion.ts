@@ -1,6 +1,12 @@
 import { useState } from 'react';
-import { Region } from 'react-native-maps';
 import { RouteResult } from '../types/navigation';
+
+export interface Region {
+  latitude: number;
+  longitude: number;
+  latitudeDelta: number;
+  longitudeDelta: number;
+}
 
 const TAIPEI_REGION: Region = {
   latitude: 25.05,
@@ -19,17 +25,12 @@ export function useMapRegion() {
 
     const lats = allCoords.map(([lat]) => lat);
     const lons = allCoords.map(([, lon]) => lon);
-    const minLat = Math.min(...lats);
-    const maxLat = Math.max(...lats);
-    const minLon = Math.min(...lons);
-    const maxLon = Math.max(...lons);
-
     const padding = 0.01;
     setRegion({
-      latitude: (minLat + maxLat) / 2,
-      longitude: (minLon + maxLon) / 2,
-      latitudeDelta: maxLat - minLat + padding,
-      longitudeDelta: maxLon - minLon + padding,
+      latitude: (Math.min(...lats) + Math.max(...lats)) / 2,
+      longitude: (Math.min(...lons) + Math.max(...lons)) / 2,
+      latitudeDelta: Math.max(...lats) - Math.min(...lats) + padding,
+      longitudeDelta: Math.max(...lons) - Math.min(...lons) + padding,
     });
   }
 

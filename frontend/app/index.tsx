@@ -32,7 +32,8 @@ export default function IndexScreen() {
       <SearchForm loading={loading} onSearch={handleSearch} />
       <TouchableOpacity
         style={styles.devBtn}
-        onPress={() => router.push('/nav_prototype')}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onPress={() => router.push('/nav_prototype' as any)}
       >
         <Text style={styles.devBtnText}>[Dev] Navigation SDK Prototype</Text>
       </TouchableOpacity>
