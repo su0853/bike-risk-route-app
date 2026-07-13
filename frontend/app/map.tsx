@@ -35,6 +35,7 @@ export default function MapScreen() {
   const { routes, loading, error, navigate } = useNavigate();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const mapCtrlRef = useRef<MapViewController | null>(null);
+  const [isMapReady, setIsMapReady] = useState(false);
 
   useEffect(() => {
     if (!params.requestJson) return;
@@ -50,13 +51,16 @@ export default function MapScreen() {
   }, [error]);
 
   useEffect(() => {
-    if (!mapCtrlRef.current || routes.length === 0) return;
+    if (!isMapReady || !mapCtrlRef.current || routes.length === 0) return;
     void drawOverlays(mapCtrlRef.current, routes, selectedIndex);
-  }, [routes, selectedIndex]);
+  }, [routes, selectedIndex, isMapReady]);
 
   const onMapViewControllerCreated = useCallback((ctrl: MapViewController) => {
     mapCtrlRef.current = ctrl;
-    ctrl.moveCamera({ target: TAIPEI, zoom: 12 });
+  }, []);
+
+  const onMapReady = useCallback(() => {
+    setIsMapReady(true);
   }, []);
 
   async function drawOverlays(
@@ -115,6 +119,7 @@ export default function MapScreen() {
         myLocationEnabled
         myLocationButtonEnabled
         onMapViewControllerCreated={onMapViewControllerCreated}
+        onMapReady={onMapReady}
         onPolylineClick={(polyline) => {
           const idx = routes.findIndex(
             (r) => `route_${r.route_type}` === polyline.id,
