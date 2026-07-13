@@ -1,5 +1,5 @@
 import {
-  NavigationView,
+  MapView,
   type MapViewController,
 } from '@googlemaps/react-native-navigation-sdk';
 import { useLocalSearchParams } from 'expo-router';
@@ -113,7 +113,7 @@ export default function MapScreen() {
 
   return (
     <View style={styles.container}>
-      <NavigationView
+      <MapView
         style={styles.map}
         initialCameraPosition={{ target: TAIPEI, zoom: 12 }}
         myLocationEnabled

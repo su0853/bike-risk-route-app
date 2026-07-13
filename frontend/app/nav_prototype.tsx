@@ -1,22 +1,21 @@
 /**
- * Navigation SDK Prototype
+ * Map Display Test
  *
- * 驗證目標：
- *   1. NavigationView 能否在目前環境中渲染
- *   2. showTermsAndConditionsDialog + init() 流程是否可用
- *   3. 能否以座標設定目的地並啟動導航
- *   4. 確認 SDK 是否需要 prebuild（此頁面在 Expo Go 下應直接 crash）
+ * 驗證目標（縮小範圍）：
+ *   - NavigationView 在無 init() 的情況下，tiles 是否會載入？
+ *   - onMapReady 是否正確觸發？
+ *   - moveCamera 能否在 onMapReady 後移動鏡頭？
  *
- * 此頁面不替換現有 map.tsx，僅作技術驗證。
+ * 預期假設：NavigationView 不呼叫 init() → tiles 不載入（米白）
+ * 若確認為真 → map.tsx 改用 MapView（不需要 init）
  */
 import {
+  MapView,
   NavigationView,
-  TaskRemovedBehavior,
-  useNavigationController,
-  type NavigationViewController,
+  type MapViewController,
 } from '@googlemaps/react-native-navigation-sdk';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -25,114 +24,89 @@ import {
   View,
 } from 'react-native';
 
-// 測試目的地：台北 101
-const DEST_101 = { position: { lat: 25.0339, lng: 121.5645 } };
-
-type Status = 'idle' | 'initializing' | 'ready' | 'navigating' | 'error';
+const TAIPEI_101 = { lat: 25.0339, lng: 121.5645 };
+const TAIPEI_CENTER = { lat: 25.05, lng: 121.55 };
 
 export default function NavPrototypeScreen() {
   const router = useRouter();
-  const [status, setStatus] = useState<Status>('idle');
-  const [log, setLog] = useState<string[]>(['等待初始化...']);
-  const navViewControllerRef = useRef<NavigationViewController | null>(null);
-
-  const {
-    navigationController,
-    setOnArrival,
-    setOnNavigationReady,
-    setOnRouteChanged,
-    removeAllListeners,
-  } = useNavigationController(
-    { title: 'Navigation Terms', companyName: 'Bike Risk Route' },
-    TaskRemovedBehavior.CONTINUE_SERVICE,
-  );
+  const [log, setLog] = useState<string[]>(['等待地圖事件...']);
+  const [navTilesLoaded, setNavTilesLoaded] = useState<boolean | null>(null);
+  const [mapTilesLoaded, setMapTilesLoaded] = useState<boolean | null>(null);
+  const navCtrlRef = useRef<MapViewController | null>(null);
+  const mapCtrlRef = useRef<MapViewController | null>(null);
 
   function addLog(msg: string) {
-    setLog(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev.slice(0, 19)]);
+    setLog(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev.slice(0, 29)]);
   }
 
-  useEffect(() => {
-    setOnNavigationReady(() => addLog('✅ Navigation session ready'));
-    setOnArrival(e => {
-      addLog(`✅ 抵達: ${JSON.stringify(e.waypoint)}`);
-      setStatus('ready');
-    });
-    setOnRouteChanged(() => addLog('路線已更新'));
-    return () => removeAllListeners();
+  // --- NavigationView callbacks (無 init) ---
+  const onNavControllerCreated = useCallback((ctrl: MapViewController) => {
+    navCtrlRef.current = ctrl;
+    addLog('NavigationView: controller 取得');
   }, []);
 
-  async function initialize() {
-    setStatus('initializing');
-    addLog('顯示服務條款對話框...');
-    try {
-      const accepted = await navigationController.showTermsAndConditionsDialog();
-      if (!accepted) {
-        addLog('⚠️ 使用者未接受服務條款');
-        setStatus('idle');
-        return;
-      }
-      addLog('條款已接受，呼叫 init()...');
-      await navigationController.init();
-      setStatus('ready');
-      addLog('✅ SDK 初始化完成');
-    } catch (e) {
-      setStatus('error');
-      addLog(`❌ 初始化失敗: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
+  const onNavMapReady = useCallback(() => {
+    addLog('NavigationView: onMapReady 觸發 ✅ → 移動鏡頭');
+    setNavTilesLoaded(true);
+    navCtrlRef.current?.moveCamera({ target: TAIPEI_101, zoom: 15 });
+  }, []);
 
-  async function startNavigation() {
-    addLog(`設定目的地: 台北 101 (${DEST_101.position.lat}, ${DEST_101.position.lng})`);
-    try {
-      await navigationController.setDestination(DEST_101);
-      await navigationController.startGuidance();
-      setStatus('navigating');
-      addLog('✅ 導航啟動');
-    } catch (e) {
-      addLog(`❌ 導航失敗: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
+  // --- MapView callbacks ---
+  const onMapControllerCreated = useCallback((ctrl: MapViewController) => {
+    mapCtrlRef.current = ctrl;
+    addLog('MapView: controller 取得');
+  }, []);
+
+  const onMapViewReady = useCallback(() => {
+    addLog('MapView: onMapReady 觸發 ✅ → 移動鏡頭');
+    setMapTilesLoaded(true);
+    mapCtrlRef.current?.moveCamera({ target: TAIPEI_101, zoom: 15 });
+  }, []);
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backBtnText}>← 返回</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>Navigation SDK Prototype</Text>
-        <View style={[styles.dot, dotColor(status)]} />
+        <Text style={styles.title}>Map Display Test</Text>
       </View>
 
-      {/* NavigationView */}
-      <NavigationView
-        style={styles.navView}
-        onNavigationViewControllerCreated={ctrl => {
-          navViewControllerRef.current = ctrl;
-          addLog('✅ NavigationView 已渲染，controller 取得');
-        }}
-      />
+      <View style={styles.mapsRow}>
+        {/* 左：NavigationView（無 init）*/}
+        <View style={styles.mapCell}>
+          <Text style={styles.mapLabel}>
+            NavigationView{'\n'}
+            <Text style={labelStatus(navTilesLoaded)}>
+              {navTilesLoaded === null ? '等待...' : navTilesLoaded ? '✅ Ready' : '❌ 未就緒'}
+            </Text>
+          </Text>
+          <NavigationView
+            style={styles.mapView}
+            initialCameraPosition={{ target: TAIPEI_CENTER, zoom: 12 }}
+            onMapViewControllerCreated={onNavControllerCreated}
+            onMapReady={onNavMapReady}
+          />
+        </View>
 
-      {/* Controls */}
-      <View style={styles.controls}>
-        <TouchableOpacity
-          style={[styles.btn, status !== 'idle' && styles.btnOff]}
-          onPress={initialize}
-          disabled={status !== 'idle'}
-        >
-          <Text style={styles.btnText}>1. 初始化 SDK</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.btn, status !== 'ready' && styles.btnOff]}
-          onPress={startNavigation}
-          disabled={status !== 'ready'}
-        >
-          <Text style={styles.btnText}>2. 導航至 101</Text>
-        </TouchableOpacity>
+        {/* 右：MapView */}
+        <View style={styles.mapCell}>
+          <Text style={styles.mapLabel}>
+            MapView{'\n'}
+            <Text style={labelStatus(mapTilesLoaded)}>
+              {mapTilesLoaded === null ? '等待...' : mapTilesLoaded ? '✅ Ready' : '❌ 未就緒'}
+            </Text>
+          </Text>
+          <MapView
+            style={styles.mapView}
+            initialCameraPosition={{ target: TAIPEI_CENTER, zoom: 12 }}
+            onMapViewControllerCreated={onMapControllerCreated}
+            onMapReady={onMapViewReady}
+          />
+        </View>
       </View>
 
-      {/* Log */}
-      <ScrollView style={styles.logBox}>
+      <ScrollView style={styles.logBox} contentContainerStyle={styles.logContent}>
         {log.map((line, i) => (
           <Text key={i} style={styles.logLine}>{line}</Text>
         ))}
@@ -141,10 +115,9 @@ export default function NavPrototypeScreen() {
   );
 }
 
-function dotColor(s: Status) {
-  return (
-    { idle: styles.dotIdle, initializing: styles.dotWarn, ready: styles.dotOk, navigating: styles.dotOk, error: styles.dotErr }[s]
-  );
+function labelStatus(loaded: boolean | null) {
+  if (loaded === null) return styles.statusWait;
+  return loaded ? styles.statusOk : styles.statusErr;
 }
 
 const styles = StyleSheet.create({
@@ -156,21 +129,19 @@ const styles = StyleSheet.create({
   backBtn: { paddingHorizontal: 4 },
   backBtnText: { color: '#94a3b8', fontSize: 14 },
   title: { flex: 1, color: '#f1f5f9', fontSize: 15, fontWeight: '700' },
-  dot: { width: 10, height: 10, borderRadius: 5 },
-  dotIdle: { backgroundColor: '#64748b' },
-  dotWarn: { backgroundColor: '#f59e0b' },
-  dotOk: { backgroundColor: '#22c55e' },
-  dotErr: { backgroundColor: '#ef4444' },
-  navView: { flex: 1 },
-  controls: {
-    flexDirection: 'row', padding: 10, gap: 8, backgroundColor: '#1e293b',
+  mapsRow: { flex: 1, flexDirection: 'row' },
+  mapCell: { flex: 1 },
+  mapLabel: {
+    backgroundColor: '#1e293b', color: '#cbd5e1', fontSize: 11,
+    textAlign: 'center', paddingVertical: 4,
   },
-  btn: {
-    flex: 1, backgroundColor: '#3b82f6', borderRadius: 8,
-    paddingVertical: 10, alignItems: 'center',
+  mapView: { flex: 1 },
+  statusWait: { color: '#94a3b8' },
+  statusOk: { color: '#22c55e' },
+  statusErr: { color: '#ef4444' },
+  logBox: { height: 200, backgroundColor: '#020617' },
+  logContent: { padding: 10 },
+  logLine: {
+    color: '#94a3b8', fontSize: 11, fontFamily: 'monospace', marginBottom: 2,
   },
-  btnOff: { backgroundColor: '#334155' },
-  btnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
-  logBox: { height: 160, backgroundColor: '#020617', padding: 10 },
-  logLine: { color: '#94a3b8', fontSize: 11, fontFamily: 'monospace', marginBottom: 2 },
 });
