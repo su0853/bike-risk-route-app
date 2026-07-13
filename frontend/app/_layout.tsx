@@ -5,6 +5,7 @@ export default function RootLayout() {
     <Stack>
       <Stack.Screen name="index" options={{ title: '自行車安全導航' }} />
       <Stack.Screen name="map" options={{ title: '路線地圖', headerBackTitle: '返回' }} />
+      <Stack.Screen name="nav_prototype" options={{ title: 'Nav SDK Prototype', headerBackTitle: '返回' }} />
     </Stack>
   );
 }
