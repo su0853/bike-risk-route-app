@@ -34,3 +34,4 @@ backend/cache/
 Thumbs.db
 *.log
 nohup.out
+docs/discussion_backlog.md
