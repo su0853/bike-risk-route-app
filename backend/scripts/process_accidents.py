@@ -26,7 +26,11 @@ def main() -> None:
 
     logger.info("=== Process Accidents Script ===")
     logger.info("Accidents GPKG: %s", settings.ACCIDENTS_GPKG_PATH)
-    logger.info("A1 weight: %.1f, A2 weight: %.1f", settings.RISK_A1_WEIGHT, settings.RISK_A2_WEIGHT)
+    logger.info(
+        "Weights A1(death/injury)=%.1f/%.1f  A2(death/injury)=%.1f/%.1f",
+        settings.RISK_A1_DEATH_WEIGHT, settings.RISK_A1_INJURY_WEIGHT,
+        settings.RISK_A2_DEATH_WEIGHT, settings.RISK_A2_INJURY_WEIGHT,
+    )
     logger.info("Decay half-life: %.1f years", settings.RISK_DECAY_HALF_LIFE_YEARS)
 
     # 載入已篩選的道路 GeoDataFrame
