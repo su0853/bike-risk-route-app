@@ -1,7 +1,7 @@
 # Deployment / 環境重建指南
 
 本文件說明如何在新環境從明確來源重建並啟動「可跑的 main」。
-範圍為第一波（最小可重現路徑）；Docker、正式 HTTPS 部署等屬後續。
+涵蓋後端（本機 venv 或 Docker）、資料重建、前端；正式 HTTPS 部署屬後續。
 
 Git 只同步原始碼，不含大型資料檔、`.env`、API key。下列步驟補齊這些。
 
@@ -21,6 +21,8 @@ Geofabrik taiwan gpkg.zip ──(URL 下載)────────────
 ---
 
 ## 1. 後端
+
+後端可**擇一**：本機 venv（1.1–1.4）或 **Docker（1.5，交接到未知環境時推薦）**。
 
 ### 1.1 環境
 
@@ -82,6 +84,38 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 - 健康檢查：`curl http://localhost:8000/api/health`
 - 主要端點：`GET /api/geocode`、`POST /api/navigate`
 
+### 1.5 用 Docker 跑後端（替代 1.1–1.4）
+
+前提：安裝 Docker + Docker Compose。指令都在 **repo 根目錄**執行。優點：不必在 host 裝
+Python / GIS 依賴，跨 OS / 晶片（Intel / Apple Silicon / arm64）皆可重現。
+
+```bash
+# 1. 建立 image（GIS wheels 自帶 GDAL，無需系統套件）
+docker compose build backend
+
+# 2. 環境變數：一樣需要 backend/.env（見 1.2）；compose 以 env_file 注入
+cp backend/.env.example backend/.env   # 編輯填入 GOOGLE_ROUTES_API_KEY
+
+# 3. 重建資料（一次性；對應 1.3）。外部 cleaned CSV 目錄用 CLEANED_CSV_DIR 掛入（唯讀）
+CLEANED_CSV_DIR=/path/to/data/cleaned \
+  docker compose run --rm backend \
+  python -m scripts.prepare_accidents_gpkg --cleaned-dir /input/cleaned --output data/raw/accidents_epsg3857.gpkg
+docker compose run --rm backend python -m scripts.download_roads_geofabrik   # 容器內連網下載 ~266MB
+docker compose run --rm backend python -m scripts.build_graph
+docker compose run --rm backend python -m scripts.process_accidents
+
+# 4. 啟動 API（publish 8000）
+docker compose up backend
+curl http://localhost:8000/api/health
+```
+
+設計要點：
+
+- image 只含程式碼 + Python 依賴；**大資料與 secret 不進 image**。
+- `./backend/data` 以 volume 掛載 → raw / processed 產物保存在 host、與本機路徑一致、可保留重用。
+- `CLEANED_CSV_DIR` 是 **compose 的插補變數**（外部 cleaned CSV 路徑），與 app 的 `backend/.env` 是兩件事。
+- 002 PostGIS 之後會在同一個 `docker-compose.yml` 加 `postgis` service（backend service 不變）。
+
 ---
 
 ## 2. 前端（Expo / main）
@@ -122,5 +156,7 @@ npx expo start            # 開發（Expo Go / development build）
 |------|---------|------|
 | `Network request failed` | `.env` 在 build 之後才設 / 用了 `localhost` / 後端沒綁 `0.0.0.0` | build 前設好 `EXPO_PUBLIC_API_BASE_URL`，用開發機可連位址，後端 `--host 0.0.0.0` |
 | 地圖米白（無 tiles） | Maps SDK for Android 未啟用 / billing 未掛 / key 授權問題 | 見 backlog 003 與「Google Cloud 配置建議」 |
-| 後端啟動報缺資料檔 | processed artifacts 不存在 | 執行第 1.3 節的資料重建腳本 |
-| `prepare_accidents_gpkg` 找不到 CSV | `--cleaned-dir` 指錯 | 指向外部 ETL 的 `cleaned/` 目錄 |
+| 後端啟動報缺資料檔 | processed artifacts 不存在 | 執行第 1.3 節（或 1.5 Docker）的資料重建 |
+| `prepare_accidents_gpkg` 找不到 CSV | `--cleaned-dir` 指錯 | 指向外部 ETL 的 `cleaned/` 目錄；Docker 下設 `CLEANED_CSV_DIR` 並用 `--cleaned-dir /input/cleaned` |
+| `docker compose` 報 `env file ... not found` | 尚未建立 `backend/.env` | 先 `cp backend/.env.example backend/.env` |
+| Docker build 很慢 / context 很大 | `backend/.dockerignore` 缺失或未排除 `data/`、`.venv/` | 確認 `backend/.dockerignore` 存在（排除這些，約 2.7GB）|
