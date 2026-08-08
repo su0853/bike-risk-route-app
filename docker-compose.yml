@@ -1,0 +1,26 @@
+# Bike-risk-route — backend + 資料管線
+# 002（PostGIS）之後會在此加一個 `postgis` service，與 backend 並列。
+#
+# 常用：
+#   docker compose build backend
+#   docker compose run --rm backend python -m scripts.prepare_accidents_gpkg --cleaned-dir /input/cleaned --output data/raw/accidents_epsg3857.gpkg
+#   docker compose run --rm backend python -m scripts.download_roads_geofabrik
+#   docker compose run --rm backend python -m scripts.build_graph
+#   docker compose run --rm backend python -m scripts.process_accidents
+#   docker compose up backend
+#
+# 外部 cleaned CSV 目錄以環境變數指定（compose 檔自身的插補變數，非 backend/.env）：
+#   CLEANED_CSV_DIR=/path/to/data/cleaned docker compose run --rm backend python -m scripts.prepare_accidents_gpkg --cleaned-dir /input/cleaned ...
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: bike-risk-backend
+    env_file:
+      - backend/.env                 # 注入 GOOGLE_ROUTES_API_KEY 等為環境變數（pydantic 直接讀）
+    ports:
+      - "8000:8000"                  # API；image 內以 --host 0.0.0.0 監聽
+    volumes:
+      - ./backend/data:/app/data     # raw+processed 產物保存在 host，不進 image
+      - ${CLEANED_CSV_DIR:-./backend/data/cleaned}:/input/cleaned:ro  # prepare_accidents 的外部輸入（唯讀）

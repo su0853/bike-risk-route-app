@@ -1,0 +1,21 @@
+# build context = ./backend；排除大檔與本機產物，避免 ~2.7GB 進 build context
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# secret / 本機環境
+.env
+
+# 大型資料（runtime 掛載，不進 image）
+data/
+*.pkl
+
+# 快取 / 測試
+.pytest_cache/
+.ruff_cache/
+
+# VCS
+.git/
+.gitignore
