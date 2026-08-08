@@ -74,6 +74,25 @@ python -m scripts.process_accidents
 參考產出規模（實測）：事故 60,953 筆、道路 815,690 條、graph 1.35M 節點 / 1.75M 邊、
 snap 成功率 ~94.85%。
 
+**資料檔大小與磁碟需求**（實測）：
+
+| 檔案 | 大小 | runtime 必需 |
+|------|------|:---:|
+| `data/raw/gis_osm_roads_free_1.gpkg` | ~248 MB | 建圖用 |
+| `data/raw/accidents_epsg3857.gpkg` | ~11 MB | 算風險用 |
+| `data/processed/taiwan_graph.pkl` | ~368 MB | ✅ |
+| `data/processed/roads_gdf.pkl` | ~162 MB | ✅ |
+| `data/processed/risk_scores.json` | ~15 MB | ✅ |
+| `data/processed/*.gpkg`（QGIS 匯出）| ~1.4 GB | ❌（僅視覺化）|
+
+- 後端啟動只需 processed 三個核心檔（~545 MB）；raw（~260 MB）僅重建時需要。
+- QGIS 匯出（`risk_scores.gpkg` / `taiwan_graph.gpkg` / `osmnx_*.gpkg`，~1.4 GB）**非 runtime 必需**，可另存或刪除。
+- 完整重建（含下載 266 MB 道路 zip）建議預留 **~4 GB** 空閒磁碟。
+
+**Fast-path（方案 B，未來選項）**：若不想完整重建，之後可提供 processed 三個核心檔（~545 MB）
+的下載（GitHub Releases / 雲端），clone 後放到 `data/processed/` 直接啟動。目前尚未提供，
+以完整重建為主。
+
 ### 1.4 啟動 API
 
 ```bash
@@ -140,13 +159,22 @@ cp .env.example .env
 
 實機測試切記：後端要以 `0.0.0.0` 監聽，且防火牆放行 8000 埠。
 
-### 2.3 啟動 / 打包
+### 2.3 Node 版本與依賴
 
 ```bash
-npm install
+cd frontend
+nvm use          # 讀 .nvmrc（Node 22）；Expo 54 需 Node >= 20.19.4（見 package.json engines）
+npm ci           # 依 package-lock.json frozen install（比 npm install 更可重現）
+```
+
+### 2.4 啟動 / 打包
+
+```bash
 npx expo start            # 開發（Expo Go / development build）
 # 實機建議 development build 或打包 APK；build 前務必先設好 .env
 ```
+
+> native build（APK）＝ **本機、Android-first、先不考慮 EAS**；Nav SDK 方向與框架選型見 backlog 003。
 
 ---
 
