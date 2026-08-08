@@ -159,6 +159,8 @@ cp .env.example .env
 
 實機測試切記：後端要以 `0.0.0.0` 監聽，且防火牆放行 8000 埠。
 
+**連線模型**：前端↔後端是 **HTTP REST（一問一答）**，非 WebSocket；backend 位址用**固定 URL**（build 時設），非區網廣播 / 自動探索。Tailscale 是**私有覆蓋網路**（給每台裝置穩定 `100.x` 位址、跨網路可達），**不是廣播** —— 它讓固定 URL 在任何網路都連得到，取代脆弱的「同區網 LAN IP」。區網廣播 / mDNS 跨不了子網、常被 AP isolation 擋，故不採用。turn-by-turn 若日後需即時定位串流，才會再評估 WebSocket。
+
 ### 2.3 Node 版本與依賴
 
 ```bash
