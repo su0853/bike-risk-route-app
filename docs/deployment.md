@@ -10,12 +10,12 @@ Git 只同步原始碼，不含大型資料檔、`.env`、API key。下列步驟
 ## 資料流概觀
 
 ```
-政府 A1/A2 事故 CSV ──(外部 ETL)──> cleaned CSV ──┐
-                                                  ├─> prepare_accidents_gpkg.py ─> accidents_epsg3857.gpkg ─┐
-Geofabrik taiwan gpkg.zip ──(URL 下載)────────────────> download_roads_geofabrik.py ─> gis_osm_roads_free_1.gpkg ─┤
-                                                                                                                  ├─> build_graph.py ─> taiwan_graph.pkl + roads_gdf.pkl
-                                                                                                                  └─> process_accidents.py ─> risk_scores.json
-                                                                                       後端啟動時載入以上 processed artifacts
+政府 A1/A2 CSV ─download_accidents_raw.py→ data/accidents_raw/ ─etl_accidents.py→ data/cleaned/  (repo 已 bundle，預設可跳過這兩步)
+data/cleaned/ ─prepare_accidents_gpkg.py→ data/raw/accidents_epsg3857.gpkg ─┐
+Geofabrik gpkg.zip ─download_roads_geofabrik.py→ data/raw/gis_osm_roads_free_1.gpkg ─┤
+                                                                                     ├─ build_graph.py → taiwan_graph.pkl + roads_gdf.pkl
+                                                                                     └─ process_accidents.py → risk_scores.json
+後端啟動時載入 processed artifacts（pkl / json）
 ```
 
 ---
@@ -31,7 +31,8 @@ Geofabrik taiwan gpkg.zip ──(URL 下載)────────────
 ```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate      # Windows: .venv\Scripts\activate
+# Bash:        source .venv/bin/activate
+# PowerShell:  .venv\Scripts\Activate.ps1
 pip install -e .               # 開發另加: pip install -e ".[dev]"
 ```
 
@@ -47,19 +48,14 @@ cp .env.example .env
 
 ### 1.3 重建資料（可重現）
 
-需要兩個上游來源：
-
-- **事故**：政府 A1/A2 CSV 經外部 ETL 專案（例：`~/projects/data/`，見其 `ETL流程說明_v3.0.md` +
-  `scripts/etl_all.py`）產生分年度 `*_A1A2_bike_cleaned.csv`。
-- **道路**：Geofabrik 台灣 free gpkg（腳本自動由 URL 下載）。
+事故的 cleaned CSV **已隨 repo bundle 在 `backend/data/cleaned/`**（自行車事故，107–109，見該目錄
+`SOURCE.md`），預設可直接用；道路由腳本從 Geofabrik URL 下載。
 
 在 `backend/` 依序執行：
 
 ```bash
-# a. 事故 cleaned CSV → EPSG:3857 GPKG
-python -m scripts.prepare_accidents_gpkg \
-    --cleaned-dir /home/su2270853/projects/data/cleaned \
-    --output data/raw/accidents_epsg3857.gpkg
+# a. 事故 cleaned CSV → EPSG:3857 GPKG（用 bundle 的 data/cleaned）
+python -m scripts.prepare_accidents_gpkg
 
 # b. 下載道路 → 單圖層 GPKG（~266MB 下載）
 python -m scripts.download_roads_geofabrik
@@ -70,6 +66,15 @@ python -m scripts.build_graph
 # d. 計算路段風險 → risk_scores.json
 python -m scripts.process_accidents
 ```
+
+**從政府源頭重建 cleaned（選用；要更新年度或稽核 ETL 流程時）**：
+
+```bash
+python -m scripts.download_accidents_raw   # 政府 A1/A2 原始 CSV → data/accidents_raw/
+python -m scripts.etl_accidents            # 清洗（民國年、死傷拆分、自行車篩選）→ data/cleaned/
+```
+
+要用**自己的資料**：`python -m scripts.prepare_accidents_gpkg --cleaned-dir <你的目錄>`。
 
 參考產出規模（實測）：事故 60,953 筆、道路 815,690 條、graph 1.35M 節點 / 1.75M 邊、
 snap 成功率 ~94.85%。
@@ -115,10 +120,9 @@ docker compose build backend
 # 2. 環境變數：一樣需要 backend/.env（見 1.2）；compose 以 env_file 注入
 cp backend/.env.example backend/.env   # 編輯填入 GOOGLE_ROUTES_API_KEY
 
-# 3. 重建資料（一次性；對應 1.3）。外部 cleaned CSV 目錄用 CLEANED_CSV_DIR 掛入（唯讀）
-CLEANED_CSV_DIR=/path/to/data/cleaned \
-  docker compose run --rm backend \
-  python -m scripts.prepare_accidents_gpkg --cleaned-dir /input/cleaned --output data/raw/accidents_epsg3857.gpkg
+# 3. 重建資料（一次性；對應 1.3）。cleaned 已 bundle 在 ./backend/data/cleaned，
+#    隨 volume 掛到 /app/data/cleaned，所以預設不需 CLEANED_CSV_DIR
+docker compose run --rm backend python -m scripts.prepare_accidents_gpkg
 docker compose run --rm backend python -m scripts.download_roads_geofabrik   # 容器內連網下載 ~266MB
 docker compose run --rm backend python -m scripts.build_graph
 docker compose run --rm backend python -m scripts.process_accidents
@@ -127,6 +131,22 @@ docker compose run --rm backend python -m scripts.process_accidents
 docker compose up backend
 curl http://localhost:8000/api/health
 ```
+
+若要用**自己的外部 cleaned 目錄**，用 `CLEANED_CSV_DIR` 掛入（唯讀）再指定 `--cleaned-dir /input/cleaned`：
+
+```bash
+# Bash
+CLEANED_CSV_DIR=/path/to/cleaned docker compose run --rm backend \
+  python -m scripts.prepare_accidents_gpkg --cleaned-dir /input/cleaned
+```
+
+```powershell
+# PowerShell
+$env:CLEANED_CSV_DIR = "C:\path\to\cleaned"
+docker compose run --rm backend python -m scripts.prepare_accidents_gpkg --cleaned-dir /input/cleaned
+```
+
+（PowerShell 健康檢查用 `curl.exe`，因 PS 的 `curl` 是 `Invoke-WebRequest` 別名。）
 
 設計要點：
 
@@ -168,6 +188,8 @@ cd frontend
 nvm use          # 讀 .nvmrc（Node 22）；Expo 54 需 Node >= 20.19.4（見 package.json engines）
 npm ci           # 依 package-lock.json frozen install（比 npm install 更可重現）
 ```
+
+> Windows 的 nvm-windows 不會讀 `.nvmrc`，請改用 `nvm install 22` + `nvm use 22`。
 
 ### 2.4 啟動 / 打包
 

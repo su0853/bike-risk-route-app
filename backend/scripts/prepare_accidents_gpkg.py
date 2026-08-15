@@ -7,7 +7,8 @@ CLI: 將 ETL 後的分年度自行車事故 cleaned CSV 合併，轉成後端 ri
       欄位: case_type, datetime, location, death_count, injury_count,
             lon, lat, hour, time_period, risk_score
       lon/lat 為 EPSG:4326 (WGS84)
-      上游 ETL 來源見 /home/su2270853/projects/data/（ETL流程說明_v3.0.md + scripts/etl_all.py）
+      上游：scripts.download_accidents_raw → scripts.etl_accidents → data/cleaned/
+      （repo 已 bundle data/cleaned/ 作為預設；要自建或更新年度才需跑上游）
 
 輸出:
     <output> (預設 = settings.ACCIDENTS_GPKG_PATH = data/raw/accidents_epsg3857.gpkg)
@@ -22,9 +23,9 @@ CLI: 將 ETL 後的分年度自行車事故 cleaned CSV 合併，轉成後端 ri
 
 執行:
     cd backend
-    python -m scripts.prepare_accidents_gpkg \\
-        --cleaned-dir /home/su2270853/projects/data/cleaned \\
-        --output data/raw/accidents_epsg3857.gpkg
+    python -m scripts.prepare_accidents_gpkg          # 用預設 data/cleaned（repo 已 bundle）
+    # 或掛自己的資料：
+    #   python -m scripts.prepare_accidents_gpkg --cleaned-dir /path/to/cleaned
 """
 import argparse
 import glob
@@ -37,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 logger = logging.getLogger("prepare_accidents_gpkg")
 
-DEFAULT_CLEANED_DIR = "/home/su2270853/projects/data/cleaned"
+DEFAULT_CLEANED_DIR = "data/cleaned"
 CSV_GLOB = "*_A1A2_bike_cleaned.csv"
 
 # ROC 領土（含金門 118.3E、馬祖 26.1N、澎湖、綠島、蘭嶼）的寬鬆 sanity 範圍。
