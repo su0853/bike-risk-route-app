@@ -43,8 +43,9 @@ cp .env.example .env
 # 編輯 .env，至少填入 GOOGLE_ROUTES_API_KEY（後端呼叫 Google Routes API 用）
 ```
 
-其餘資料路徑有預設值，通常不需修改。API key 配置另見
-[../docs/decision_log.md](./decision_log.md) 與 backlog 的「Google Cloud 配置建議」。
+其餘資料路徑有預設值，通常不需修改。API key 分兩把、各自限制：後端 `GOOGLE_ROUTES_API_KEY`
+（Routes API，放 `backend/.env`，靠保密）；前端 `GOOGLE_MAPS_ANDROID_KEY`（Maps SDK for Android，
+build 時注入 AndroidManifest，靠 package + SHA-1 限制而非保密）。
 
 ### 1.3 重建資料（可重現）
 
