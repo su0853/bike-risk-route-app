@@ -200,6 +200,32 @@ npx expo start            # 開發（Expo Go / development build）
 
 > native build（APK）＝ **本機、Android-first、先不考慮 EAS**；Nav SDK 方向與框架選型見 backlog 003。
 
+### 2.5 Tailscale 開發：裝置連 Metro（dev-only）
+
+用 Expo Go / development build 在實機開發時有**兩條連線**，兩個變數各管一條：
+
+| 連線 | 變數 | 說明 |
+|------|------|------|
+| 裝置 → Metro dev server | `REACT_NATIVE_PACKAGER_HOSTNAME` | 讓 Metro 對外宣告 tailnet IP，手機才連得到 Metro 抓 JS bundle / 熱更新。**dev-only，打包 APK 後不需要** |
+| app → 後端 API | `EXPO_PUBLIC_API_BASE_URL` | app 取路線 / 地址的後端位址（見 2.2）|
+
+Tailscale 下 `expo start` 預設宣告 LAN IP，手機連不到，需指定 tailnet IP：
+
+```bash
+# Bash
+REACT_NATIVE_PACKAGER_HOSTNAME=100.x.y.z npx expo start
+```
+
+```powershell
+# PowerShell（已驗證可用）
+$env:REACT_NATIVE_PACKAGER_HOSTNAME="100.x.y.z"; npx expo start
+```
+
+驗證：`expo start` 印出的位址是 `exp://100.x.y.z:8081`（tailnet IP）而非 `192.168.x.x`，手機即可連上。
+
+> 也可把 `REACT_NATIVE_PACKAGER_HOSTNAME=100.x.y.z` 寫進 `frontend/.env`（Expo CLI 會載入 .env 到 process 環境）。
+> 採此法時用**全新終端**跑純 `npx expo start`（前面不加 `$env:`），確認印出的 HOST 仍是 tailnet IP，才代表 .env 有生效。
+
 ---
 
 ## 3. 常見問題
@@ -209,6 +235,43 @@ npx expo start            # 開發（Expo Go / development build）
 | `Network request failed` | `.env` 在 build 之後才設 / 用了 `localhost` / 後端沒綁 `0.0.0.0` | build 前設好 `EXPO_PUBLIC_API_BASE_URL`，用開發機可連位址，後端 `--host 0.0.0.0` |
 | 地圖米白（無 tiles） | Maps SDK for Android 未啟用 / billing 未掛 / key 授權問題 | 見 backlog 003 與「Google Cloud 配置建議」 |
 | 後端啟動報缺資料檔 | processed artifacts 不存在 | 執行第 1.3 節（或 1.5 Docker）的資料重建 |
-| `prepare_accidents_gpkg` 找不到 CSV | `--cleaned-dir` 指錯 | 指向外部 ETL 的 `cleaned/` 目錄；Docker 下設 `CLEANED_CSV_DIR` 並用 `--cleaned-dir /input/cleaned` |
+| `prepare_accidents_gpkg` 找不到 CSV | 預設讀 bundled `data/cleaned`，若被清空或自備資料路徑錯 | 確認 `backend/data/cleaned/*.csv` 存在；自備資料用 `--cleaned-dir`（Docker 設 `CLEANED_CSV_DIR`）|
 | `docker compose` 報 `env file ... not found` | 尚未建立 `backend/.env` | 先 `cp backend/.env.example backend/.env` |
 | Docker build 很慢 / context 很大 | `backend/.dockerignore` 缺失或未排除 `data/`、`.venv/` | 確認 `backend/.dockerignore` 存在（排除這些，約 2.7GB）|
+| 手機連不上 Metro（Unable to connect to development server）| Tailscale 下 Metro 宣告 LAN IP，手機連不到 | 設 `REACT_NATIVE_PACKAGER_HOSTNAME` 為 tailnet IP（見 2.5）|
+| 實機 Metro 正常但 `/api/*` 逾時（Windows + Docker）| Windows 防火牆 `Docker Desktop Backend` 的 inbound Block 規則擋掉容器 published port | 停用該 Block 規則 + 放行 8000（見第 4 節）|
+
+---
+
+## 4. Windows + Docker + Tailscale 註記
+
+實機經 Tailscale 測試時，Metro（`node.exe`）通常已被防火牆放行，但 **Docker 發布的後端 port 8000 可能被擋**，症狀是「Metro 正常、`/api/*` 逾時」。
+
+原因：Windows Defender Firewall 有一條 `Docker Desktop Backend` 的 inbound **Block** 規則。Windows 防火牆 **Block 優先於 Allow**，所以只加一條 8000 的 Allow 規則無效，必須先停用該 Block 規則。
+
+> **以系統管理員身分執行 PowerShell**（修改防火牆規則需要提權，否則指令會失敗或找不到規則）。
+> 開始選單搜尋 PowerShell → 右鍵「以系統管理員身分執行」；或 Win+X →「終端機（系統管理員）」。
+
+執行：
+
+```powershell
+# 1. 停用 Docker Desktop Backend 的 inbound Block 規則
+Get-NetFirewallRule -DisplayName "Docker Desktop Backend" |
+  Where-Object { $_.Action -eq "Block" -and $_.Direction -eq "Inbound" } |
+  Set-NetFirewallRule -Enabled False
+
+# 2. 明確放行 8000 inbound
+New-NetFirewallRule -DisplayName "Bike backend 8000 (dev)" -Direction Inbound `
+  -Protocol TCP -LocalPort 8000 -Action Allow -Profile Any
+```
+
+驗證：手機瀏覽器或另一台 tailnet 裝置開 `http://<tailnet-ip>:8000/api/health`，回 `{"status":"ok",...}` 即通。
+
+注意：Docker Desktop 重啟 / 更新後可能把 Block 規則加回來，逾時重現就再停用一次。
+
+其他 Windows 差異彙整：
+
+- venv 啟動：`.venv\Scripts\Activate.ps1`（見 1.1）。
+- Node 版本：nvm-windows 用 `nvm install 22` + `nvm use 22`（不讀 `.nvmrc`，見 2.3）。
+- 行內環境變數：PowerShell 用 `$env:VAR="..."; cmd`，非 bash 的 `VAR=... cmd`。
+- 健康檢查：PowerShell 用 `curl.exe`（`curl` 是 `Invoke-WebRequest` 別名）。
