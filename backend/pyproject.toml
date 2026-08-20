@@ -26,6 +26,12 @@ dev = [
     "pytest-asyncio>=0.23",
     "ruff>=0.1",
 ]
+notebook = [
+    "jupyterlab>=4,<5",
+    "matplotlib>=3.8,<4",
+    "contextily>=1.5,<2",   # 選用：OSM 底圖
+    "mapclassify>=2.6,<3",  # 選用：geopandas 分級著色
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]

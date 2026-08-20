@@ -40,3 +40,8 @@ docs/discussion_backlog.md
 Thumbs.db
 *.log
 nohup.out
+
+# Jupyter notebooks
+.ipynb_checkpoints/
+notebooks/**/output/
+notebooks/**/*.png
