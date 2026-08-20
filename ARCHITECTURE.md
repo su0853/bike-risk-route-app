@@ -56,23 +56,29 @@ Dijkstra + 風險加權圖                         Google Routes API v2
 ## 2. 整體資料流程
 
 ```
-[原始資料]
-  gis_osm_roads_free_1.gpkg        accidents_epsg3857.gpkg
-  (Geofabrik Taiwan, 246 MB)        (原始事故資料，EPSG:3857)
-          │                                    │
-          ▼                                    ▼
-  scripts/build_graph.py          scripts/process_accidents.py
-          │                                    │
-          ▼                                    ▼
-  taiwan_graph.pkl                   risk_scores.json
-  (NetworkX MultiGraph)              (osm_id → [0, 1])
-  roads_gdf.pkl
-  (GeoDataFrame)
-          │                                    │
-          └───────────────┬───────────────────┘
-                          │  FastAPI lifespan 載入至 app.state
-                          ▼
-                    /api/navigate
+[上游來源]
+  Geofabrik Taiwan gpkg.zip (URL)         政府 A1/A2 事故 CSV (data.gov.tw)
+          │                                        │
+  download_roads_geofabrik.py             download_accidents_raw.py
+          │                                        ▼
+          │                                data/accidents_raw/*.csv
+          │                                        │  etl_accidents.py（清洗 + 自行車篩選）
+          │                                        ▼
+          │                                data/cleaned/*.csv（repo 已 bundle）
+          │                                        │  prepare_accidents_gpkg.py
+          ▼                                        ▼
+  gis_osm_roads_free_1.gpkg (~248 MB)     accidents_epsg3857.gpkg (EPSG:3857)
+          │                                        │
+  build_graph.py                          process_accidents.py
+          │                                        │
+          ▼                                        ▼
+  taiwan_graph.pkl（NetworkX MultiGraph）  risk_scores.json（osm_id → [0,1]）
+  roads_gdf.pkl（GeoDataFrame）                    │
+          │                                        │
+          └────────────────┬───────────────────────┘
+                           │  FastAPI lifespan 載入至 app.state
+                           ▼
+                     /api/navigate
 ```
 
 ---
@@ -81,7 +87,7 @@ Dijkstra + 風險加權圖                         Google Routes API v2
 
 ### 3.1 路網圖建構（`scripts/build_graph.py`）
 
-**輸入**：`gis_osm_roads_free_1.gpkg`（Geofabrik Taiwan，EPSG:3857）
+**輸入**：`gis_osm_roads_free_1.gpkg`（由 `download_roads_geofabrik.py` 從 Geofabrik URL 下載、抽出 roads 圖層並重投影至 EPSG:3857）
 
 **排除的道路類型**（`EXCLUDED_FCLASSES`）：
 `motorway`, `motorway_link`, `trunk`, `trunk_link`, `steps`, `busway`, `bridleway`
@@ -110,7 +116,7 @@ Geofabrik 以 OSM Way 為單位儲存道路，每條 Way 是一段完整 LineStr
   每段：(n_start, n_end) 為節點，保留 osm_id、fclass、length_m、geometry
 ```
 
-**修復後**：連通率達 97%（1,312,781 節點，1,703,330 邊）
+**修復後**：連通率約 97%（參考值 1,351,337 節點、1,753,901 邊；實際數字依 Geofabrik 快照而異）
 
 **輸出**：
 - `taiwan_graph.pkl`：NetworkX MultiGraph
@@ -120,7 +126,7 @@ Geofabrik 以 OSM Way 為單位儲存道路，每條 Way 是一段完整 LineStr
 
 ### 3.2 事故風險分數計算（`scripts/process_accidents.py`）
 
-**輸入**：`accidents_epsg3857.gpkg`（原始事故資料，EPSG:3857，Python 直接 sjoin_nearest，不依賴 QGIS 預先 snap）
+**輸入**：`accidents_epsg3857.gpkg`（由 in-project ETL 產生：`download_accidents_raw.py` → `etl_accidents.py` → `prepare_accidents_gpkg.py`，EPSG:3857）。事故對應採 Python `sjoin_nearest`，不依賴 QGIS 預先 snap。
 
 #### 風險權重公式
 
@@ -147,7 +153,7 @@ Geofabrik 以 OSM Way 為單位儲存道路，每條 Way 是一段完整 LineStr
 
 使用 `geopandas.sjoin_nearest()` 將事故點對應至最近道路路段：
 
-- 容差：`SNAP_TOLERANCE_M = 20m`（QGIS 驗證：94.80% 成功率）
+- 容差：`SNAP_TOLERANCE_M = 20m`（實測 snap 成功率約 94.85%）
 - 對應鍵：`osm_id`（Geofabrik OSM Way ID，與路網圖邊屬性一致）
 - 同距離多重匹配：保留第一筆
 
@@ -309,9 +315,9 @@ Body:
   "status": "ok",
   "graph_loaded": true,
   "risk_scores_loaded": true,
-  "node_count": 1312781,
-  "edge_count": 1703330,
-  "risk_score_count": 766454
+  "node_count": 1351337,
+  "edge_count": 1753901,
+  "risk_score_count": 788320
 }
 ```
 
@@ -464,7 +470,7 @@ osmnx 直接從 OSM Overpass API 下載路網，需要網路連線。本專案�
 
 ### 為何使用 osm_id 作為風險對應鍵？
 
-事故資料在 QGIS 中 Snap 至 Geofabrik 道路，取得的是 Geofabrik 的 `osm_id`（即 OSM Way ID）。路網圖的每條邊也保留了原始 `osm_id`。兩邊共用同一鍵，無須額外的空間對應，查詢複雜度 O(1)。
+事故點以 Python `sjoin_nearest` 對應到最近的 Geofabrik 道路，取得該路段的 `osm_id`（即 OSM Way ID）。路網圖的每條邊也保留原始 `osm_id`，兩邊共用同一鍵，無須額外的空間對應，查詢複雜度 O(1)。
 
 ### 為何使用 MultiGraph 而非 Graph？
 
