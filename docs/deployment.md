@@ -45,7 +45,7 @@ cp .env.example .env
 
 其餘資料路徑有預設值，通常不需修改。API key 分兩把、各自限制：後端 `GOOGLE_ROUTES_API_KEY`
 （Routes API，放 `backend/.env`，靠保密）；前端 `GOOGLE_MAPS_ANDROID_KEY`（Maps SDK for Android，
-build 時注入 AndroidManifest，靠 package + SHA-1 限制而非保密）。
+build 時注入 AndroidManifest，靠 package + SHA-1 限制而非保密）。前端地圖 key 分平台與執行環境：Android 需此 key；iOS 用 Apple Maps 免 key；Expo Go 內測試用 Expo 內建地圖、不會用到你的 key（Cloud 因此無 Maps SDK 用量），你的 key 只在 dev build / APK 生效。
 
 ### 1.3 重建資料（可重現）
 
@@ -86,10 +86,10 @@ snap 成功率 ~94.85%。
 |------|------|:---:|
 | `data/raw/gis_osm_roads_free_1.gpkg` | ~248 MB | 建圖用 |
 | `data/raw/accidents_epsg3857.gpkg` | ~11 MB | 算風險用 |
-| `data/processed/taiwan_graph.pkl` | ~368 MB | ✅ |
-| `data/processed/roads_gdf.pkl` | ~162 MB | ✅ |
-| `data/processed/risk_scores.json` | ~15 MB | ✅ |
-| `data/processed/*.gpkg`（QGIS 匯出）| ~1.4 GB | ❌（僅視覺化）|
+| `data/processed/taiwan_graph.pkl` | ~368 MB | 是（啟動載入）|
+| `data/processed/roads_gdf.pkl` | ~162 MB | 是（啟動載入）|
+| `data/processed/risk_scores.json` | ~15 MB | 是（啟動載入）|
+| `data/processed/*.gpkg`（QGIS 匯出）| ~1.4 GB | 否（僅視覺化）|
 
 - 後端啟動只需 processed 三個核心檔（~545 MB）；raw（~260 MB）僅重建時需要。
 - QGIS 匯出（`risk_scores.gpkg` / `taiwan_graph.gpkg` / `osmnx_*.gpkg`，~1.4 GB）**非 runtime 必需**，可另存或刪除。
@@ -160,7 +160,7 @@ docker compose run --rm backend python -m scripts.prepare_accidents_gpkg --clean
 
 ## 2. 前端（Expo / main）
 
-### 2.1 環境變數（⚠️ 必須在 build/啟動前設好）
+### 2.1 環境變數（必須在 build / 啟動前設好）
 
 ```bash
 cd frontend
@@ -199,7 +199,7 @@ npx expo start            # 開發（Expo Go / development build）
 # 實機建議 development build 或打包 APK；build 前務必先設好 .env
 ```
 
-> native build（APK）＝ **本機、Android-first、先不考慮 EAS**；Nav SDK 方向與框架選型見 backlog 003。
+> native build（APK）＝ **本機、Android-first、先不考慮 EAS**；turn-by-turn（Navigation SDK）尚未整合，屬後續。
 
 ### 2.5 Tailscale 開發：裝置連 Metro（dev-only）
 
@@ -224,8 +224,8 @@ $env:REACT_NATIVE_PACKAGER_HOSTNAME="100.x.y.z"; npx expo start
 
 驗證：`expo start` 印出的位址是 `exp://100.x.y.z:8081`（tailnet IP）而非 `192.168.x.x`，手機即可連上。
 
-> 也可把 `REACT_NATIVE_PACKAGER_HOSTNAME=100.x.y.z` 寫進 `frontend/.env`（Expo CLI 會載入 .env 到 process 環境）。
-> 採此法時用**全新終端**跑純 `npx expo start`（前面不加 `$env:`），確認印出的 HOST 仍是 tailnet IP，才代表 .env 有生效。
+> **也可寫進 `frontend/.env`（已驗證可用）**：加 `REACT_NATIVE_PACKAGER_HOSTNAME=100.x.y.z`。
+> Expo CLI 會把 .env 載入 process 環境，純 `npx expo start`（不加 `$env:`）即可讓 Metro 宣告 tailnet IP —— 跨平台最省事，Windows 也免打 `$env:`。
 
 ---
 
@@ -234,7 +234,7 @@ $env:REACT_NATIVE_PACKAGER_HOSTNAME="100.x.y.z"; npx expo start
 | 症狀 | 可能原因 | 處理 |
 |------|---------|------|
 | `Network request failed` | `.env` 在 build 之後才設 / 用了 `localhost` / 後端沒綁 `0.0.0.0` | build 前設好 `EXPO_PUBLIC_API_BASE_URL`，用開發機可連位址，後端 `--host 0.0.0.0` |
-| 地圖米白（無 tiles） | Maps SDK for Android 未啟用 / billing 未掛 / key 授權問題 | 見 backlog 003 與「Google Cloud 配置建議」 |
+| 地圖米白（無 tiles） | Maps SDK for Android 未啟用 / billing 未掛 / key 授權問題 | 確認 Cloud 專案已啟用 Maps SDK for Android + billing；Nav SDK 另需向 Google 申請專案開通 |
 | 後端啟動報缺資料檔 | processed artifacts 不存在 | 執行第 1.3 節（或 1.5 Docker）的資料重建 |
 | `prepare_accidents_gpkg` 找不到 CSV | 預設讀 bundled `data/cleaned`，若被清空或自備資料路徑錯 | 確認 `backend/data/cleaned/*.csv` 存在；自備資料用 `--cleaned-dir`（Docker 設 `CLEANED_CSV_DIR`）|
 | `docker compose` 報 `env file ... not found` | 尚未建立 `backend/.env` | 先 `cp backend/.env.example backend/.env` |
