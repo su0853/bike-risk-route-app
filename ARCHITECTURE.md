@@ -118,6 +118,9 @@ Geofabrik 以 OSM Way 為單位儲存道路，每條 Way 是一段完整 LineStr
 
 **修復後**：連通率約 97%（參考值 1,351,337 節點、1,753,901 邊；實際數字依 Geofabrik 快照而異）
 
+> **視覺化驗證**：可用 `notebooks/topology_repair_demo.ipynb` 親眼看這個過程——Part A 用 toy 資料
+> 解釋「為什麼斷」，Part B 在真實 bbox 上重現「修復前後連通率」（台北車站 600m 實測 15.4% → 92.9%）。
+
 **輸出**：
 - `taiwan_graph.pkl`：NetworkX MultiGraph
 - `roads_gdf.pkl`：篩選後的 GeoDataFrame（用於事故 Snap）
