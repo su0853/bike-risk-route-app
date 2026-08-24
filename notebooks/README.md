@@ -7,12 +7,27 @@
 
 ## 執行環境
 
-notebook 依賴後端套件 `app`，必須用**後端 venv** 跑（`app` 已 `pip install -e .`）：
+notebook 依賴後端套件 `app`，走**本機 venv 路徑**（`docs/deployment.md` §1.1；README quick-start 的 Docker 路徑未含 Jupyter）。
+
+先建好並啟用 venv、裝 notebook 依賴（`app` 以 editable 安裝，任何目錄都 import 得到）：
 
 ```bash
 cd backend
-pip install -e ".[notebook]"     # 一次性：裝 jupyterlab / matplotlib 等
+python -m venv .venv                 # 若還沒建（同 deployment.md §1.1）
+source .venv/bin/activate            # PowerShell: .venv\Scripts\Activate.ps1
+pip install -e ".[notebook]"         # app(editable) + jupyterlab / matplotlib 等
+```
+
+啟動 JupyterLab：
+
+```bash
+# Bash / macOS / Linux
 .venv/bin/jupyter lab --notebook-dir ../notebooks
+```
+
+```powershell
+# PowerShell (Windows)
+.venv\Scripts\jupyter.exe lab --notebook-dir ..\notebooks
 ```
 
 - kernel 選 **Python 3**（即後端 venv 的預設 kernel，帶 `app` 與所有依賴）。
@@ -41,7 +56,7 @@ L2 / L3 的輸入檔**不進 git**，由 `docs/deployment.md` 的流程取得（
 ### `topology_repair_demo.ipynb`
 - **purpose**：視覺化路網「拓撲修復」為什麼需要、怎麼運作（對應 `ARCHITECTURE.md §3.1`）。
 - **needs**：Part A 無（toy）；Part B 需 `backend/data/raw/gis_osm_roads_free_1.gpkg`
-  （未內建，先跑 `backend/scripts/download_roads_geofabrik.py`）。
+  （未內建，先在 backend 跑 `python -m scripts.download_roads_geofabrik`）。
 - **scale**：L1 toy + L2 bbox。
 - **runtime**：< 1 分鐘。
 - **output**：保留（含圖）。
