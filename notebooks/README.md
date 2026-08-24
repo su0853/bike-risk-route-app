@@ -32,8 +32,8 @@ pip install -e ".[notebook]"         # app(editable) + jupyterlab / matplotlib �
 
 - kernel 選 **Python 3**（即後端 venv 的預設 kernel，帶 `app` 與所有依賴）。
 - 「有沒有依賴」看 **kernel**（後端 venv），不看 `.ipynb` 檔放哪個資料夾。
-- 中文圖表：本機需有 CJK 字型（例 `Noto Sans CJK TC`）；給別台跑時，軸標建議用英文、
-  中文解說寫在 Markdown cell。
+- 中文顯示：**圖內文字一律用英文**以求可攜（跨機器 / GitHub render 不缺字），中文解說寫在 Markdown cell。
+  setup cell 會「本機有 CJK 字型才套用」（優雅降級，沒有也不報錯），日後想在圖內加中文才用得到。
 
 ## 資料層級（scale）
 
