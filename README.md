@@ -150,6 +150,7 @@ backend/data/processed/risk_scores.json
 - [`docs/deployment.md`](./docs/deployment.md)：環境重建、Docker、資料管線、前端啟動。
 - [`ARCHITECTURE.md`](./ARCHITECTURE.md)：系統架構、資料流、API、前後端模組。
 - [`docs/risk_score_methodology.md`](./docs/risk_score_methodology.md)：風險分數計算方法、公式、限制。
+- [`docs/data_dictionary.md`](./docs/data_dictionary.md)：各資料檔的欄位、型別、意義與座標系。
 - [`notebooks/`](./notebooks/)：探索 / 驗證用的 Jupyter notebook（視覺化拓撲修復等 pipeline 內部過程）；非必要，需要檢視時再操作，說明見 [`notebooks/README.md`](./notebooks/README.md)。
 
 ---

@@ -55,6 +55,8 @@ Dijkstra + 風險加權圖                         Google Routes API v2
 
 ## 2. 整體資料流程
 
+> 各檔案的欄位、型別與意義見 [`docs/data_dictionary.md`](docs/data_dictionary.md)。
+
 ```
 [上游來源]
   Geofabrik Taiwan gpkg.zip (URL)         政府 A1/A2 事故 CSV (data.gov.tw)
