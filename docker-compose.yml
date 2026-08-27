@@ -1,5 +1,8 @@
-# Bike-risk-route — backend + 資料管線
-# 002（PostGIS）之後會在此加一個 `postgis` service，與 backend 並列。
+# Bike-risk-route — backend + 資料管線 + PostGIS
+# PostGIS（002 Wave 1）：真相來源 / 查詢 / QGIS 圖層。backend runtime 目前不依賴它。
+#   docker compose up -d postgis                                   # 起 DB
+#   docker compose run --rm backend python -m scripts.load_to_postgis   # 灌既有 pkl/json/gpkg
+#   QGIS / psql 連 localhost:5432（db=bikerisk）
 #
 # 常用：
 #   docker compose build backend
@@ -24,3 +27,22 @@ services:
     volumes:
       - ./backend/data:/app/data     # raw+processed 產物保存在 host，不進 image
       - ${CLEANED_CSV_DIR:-./backend/data/cleaned}:/input/cleaned:ro  # prepare_accidents 的外部輸入（唯讀）
+
+  postgis:
+    image: imresamu/postgis:16-3.4   # 多架構（amd64 + arm64）PostGIS；官方 postgis/postgis 目前僅 amd64
+    environment:
+      POSTGRES_USER: bikerisk
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bikerisk_dev}   # 開發預設；正式部署請換
+      POSTGRES_DB: bikerisk
+    ports:
+      - "5432:5432"                  # 給 host 端的 QGIS / psql
+    volumes:
+      - pgdata:/var/lib/postgresql/data   # 命名 volume 持久化（不進 repo）
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bikerisk -d bikerisk"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

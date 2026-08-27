@@ -32,6 +32,11 @@ notebook = [
     "contextily>=1.5,<2",   # 選用：OSM 底圖
     "mapclassify>=2.6,<3",  # 選用：geopandas 分級著色
 ]
+db = [                       # 002 PostGIS：load_to_postgis.py 的 to_postgis/read_postgis
+    "sqlalchemy>=2,<3",
+    "geoalchemy2>=0.14,<1",
+    "psycopg[binary]>=3.1,<4",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
