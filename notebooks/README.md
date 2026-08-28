@@ -60,4 +60,14 @@ L2 / L3 的輸入檔**不進 git**，由 `docs/deployment.md` 的流程取得（
 - **scale**：L1 toy + L2 bbox。
 - **runtime**：< 1 分鐘。
 - **output**：保留（含圖）。
-- 結果：Part A `2→1 分量`；Part B（台北車站 600m bbox）naive 最大連通比 `15.4% → build_graph 92.9%`。
+- 結果：Part A `4→2 分量`（A+B+C 連通、孤立 D 仍分開）；Part B（台北車站 600m bbox）
+  naive 最大連通比 `15.4% → build_graph 92.9%`。
+
+### `risk_distribution_exploration.ipynb`
+- **purpose**：觀察風險分數分佈（零膨脹 / 右偏 / 截斷點 / 短路段放大），餵 backlog 004 校準；
+  同時解釋「QGIS 用 Jenks 前幾組全是 0」的現象。
+- **needs**：**postgis 起著 + 已跑 `load_to_postgis`**（見 `docs/deployment.md` §5）；直接查 `road_risk` 表。
+- **scale**：L3。
+- **runtime**：< 1 分鐘。
+- **output**：保留（含圖）。
+- 結果：`risk = 0` 占 `95.49%`；截斷點 P95 / P99 / P99.5 → `1,779 / 356 / 178` 條被壓到 `1.0`。
