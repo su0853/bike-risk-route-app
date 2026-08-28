@@ -276,3 +276,64 @@ New-NetFirewallRule -DisplayName "Bike backend 8000 (dev)" -Direction Inbound `
 - Node 版本：nvm-windows 用 `nvm install 22` + `nvm use 22`（不讀 `.nvmrc`，見 2.3）。
 - 行內環境變數：PowerShell 用 `$env:VAR="..."; cmd`，非 bash 的 `VAR=... cmd`。
 - 健康檢查：PowerShell 用 `curl.exe`（`curl` 是 `Invoke-WebRequest` 別名）。
+
+---
+
+## 5. PostGIS（選用）— 資料檢視 / QGIS
+
+定位：PostGIS 作為**真相來源 / 查詢 / QGIS 圖層**；**API runtime 目前不依賴它**（backlog 002 Wave 1）。
+平常跑 API 不需要起它，只有要用 QGIS 疊圖或做 SQL 查詢時才起。先完成 §1.3 產生
+`roads_gdf`/`taiwan_graph`/`risk_scores`/`accidents` 等產物，再匯入 DB。欄位定義見
+[`data_dictionary.md`](data_dictionary.md)。
+
+### 5.1 起資料庫
+
+```bash
+docker compose up -d postgis     # healthy 後即可連
+```
+
+- image 用 `imresamu/postgis:16-3.4`（多架構，含 **arm64**；官方 `postgis/postgis` 目前僅 amd64）。
+- 資料存命名 volume `pgdata`（不進 repo）。連線：host `localhost`、port `5432`、db `bikerisk`、
+  user `bikerisk`、密碼見 `POSTGRES_PASSWORD`（開發預設 `bikerisk_dev`，正式部署請換）。
+
+### 5.2 匯入資料
+
+需要 `[db]` 依賴（sqlalchemy / geoalchemy2 / psycopg）。**host 端執行**（後端 venv）：
+
+```bash
+cd backend
+pip install -e ".[db]"                                       # 一次性
+python -m scripts.load_to_postgis                            # 全部表
+python -m scripts.load_to_postgis --tables roads,accidents,road_risk   # 只灌部分
+```
+
+- host 端預設連 `localhost:5432`。冪等（`if_exists="replace"`，可重跑）。
+- 載入約 1.5 分：`roads`/`road_risk` 788k、`accidents` 61k、`graph_nodes` 1.35M、`graph_edges` 1.75M，
+  另建 `roads_with_risk` view。
+- **不讀 `roads_gdf.pkl`**：它跨 pandas 版本無法反序列化，script 改用 `load_and_filter_roads` 現算。
+
+> 容器內執行（`docker compose run --rm backend python -m scripts.load_to_postgis`，DB host 自動為 `postgis`）
+> 需先讓 backend image 含 `[db]`：把 `backend/Dockerfile` 的 `pip install -e .` 改成 `pip install -e ".[db]"` 重建。
+
+### 5.3 QGIS 連線
+
+Data Source Manager → PostgreSQL → New：host `localhost`、port `5432`、db `bikerisk`、填 user/密碼。
+加圖層 `roads` / `accidents` / `graph_edges`；風險著色用 view `roads_with_risk` 的 `normalized_risk`。
+
+> **著色提醒**：約 95% 道路 `normalized_risk = 0`，直接用 Natural Breaks (Jenks) 會讓前幾組全是
+> `0.000–0.000`。先對圖層加過濾 **`normalized_risk > 0`** 再分級，才看得到層次。這是資料本身的零膨脹，
+> 屬風險校準（backlog 004）範圍。
+
+### 5.4 實務註記
+
+- **arm64**：官方 `postgis/postgis` 僅 amd64，起容器會 `exec format error`；本 compose 已改用多架構的
+  `imresamu/postgis`。
+- **預設擴充**：image 開機會啟用 `postgis_tiger_geocoder` + `postgis_topology`，多出 `tiger` / `tiger_data` /
+  `topology` schema（美國地址地理編碼 / 拓撲，本專案不用，無害）。想要乾淨的 DB：
+  ```sql
+  DROP EXTENSION IF EXISTS postgis_tiger_geocoder CASCADE;   -- 移除 tiger / tiger_data
+  DROP EXTENSION IF EXISTS postgis_topology CASCADE;         -- 移除 topology
+  -- 保留 postgis；每次全新 `docker compose up` 會再出現
+  ```
+- **停止 / 清除**：`docker compose stop postgis`（資料留在 `pgdata`）；`docker compose down -v` 會**刪除 volume**（資料清空）。
+- Windows：連線 host 同為 `localhost`；venv 啟動與行內環境變數差異見 §1、§4。
