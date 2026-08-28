@@ -329,11 +329,11 @@ Data Source Manager → PostgreSQL → New：host `localhost`、port `5432`、db
 - **arm64**：官方 `postgis/postgis` 僅 amd64，起容器會 `exec format error`；本 compose 已改用多架構的
   `imresamu/postgis`。
 - **預設擴充**：image 開機會啟用 `postgis_tiger_geocoder` + `postgis_topology`，多出 `tiger` / `tiger_data` /
-  `topology` schema（美國地址地理編碼 / 拓撲，本專案不用，無害）。想要乾淨的 DB：
+  `topology` schema（美國地址地理編碼 / 拓撲，本專案不用）。**它們是空的、無害，放著不動即可。**
+  只有在想要乾淨 schema 清單時才需要（選用，且每次全新 `docker compose up` 會再出現）：
   ```sql
   DROP EXTENSION IF EXISTS postgis_tiger_geocoder CASCADE;   -- 移除 tiger / tiger_data
-  DROP EXTENSION IF EXISTS postgis_topology CASCADE;         -- 移除 topology
-  -- 保留 postgis；每次全新 `docker compose up` 會再出現
+  DROP EXTENSION IF EXISTS postgis_topology CASCADE;         -- 移除 topology；保留 postgis
   ```
 - **停止 / 清除**：`docker compose stop postgis`（資料留在 `pgdata`）；`docker compose down -v` 會**刪除 volume**（資料清空）。
 - Windows：連線 host 同為 `localhost`；venv 啟動與行內環境變數差異見 §1、§4。
