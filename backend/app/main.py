@@ -34,32 +34,54 @@ async def lifespan(app: FastAPI):
         logger.warning("Graph file not found: %s — run scripts/build_graph.py first", settings.GRAPH_FILE_PATH)
         app.state.graph = None
 
-    # Roads GeoDataFrame (用於 spatial join)
-    if Path(settings.ROADS_GDF_PATH).exists():
+    # Roads GDF + Risk Scores：USE_POSTGIS 決定來源（002 Wave 2）。graph 一律 pkl（上方）。
+    app.state.db_engine = None
+    if settings.USE_POSTGIS:
+        logger.info("USE_POSTGIS=on → 從 PostGIS 載 roads_gdf / risk_scores")
         try:
-            app.state.roads_gdf = load_roads_gdf(settings.ROADS_GDF_PATH)
-        except Exception as e:
-            logger.error("Failed to load roads GDF: %s", e)
-            app.state.roads_gdf = None
-    else:
-        logger.warning("Roads GDF not found: %s", settings.ROADS_GDF_PATH)
-        app.state.roads_gdf = None
+            from app.services.db_source import (
+                load_risk_scores_from_db,
+                load_roads_gdf_from_db,
+                make_engine,
+            )
 
-    # Risk Scores
-    if Path(settings.RISK_SCORES_PATH).exists():
-        try:
-            app.state.risk_scores = load_risk_scores(settings.RISK_SCORES_PATH)
+            engine = make_engine(settings.DATABASE_URL)
+            app.state.db_engine = engine
+            app.state.roads_gdf = load_roads_gdf_from_db(engine)
+            app.state.risk_scores = load_risk_scores_from_db(engine)
         except Exception as e:
-            logger.error("Failed to load risk scores: %s", e)
+            logger.error("Failed to load from PostGIS: %s", e)
+            app.state.roads_gdf = None
             app.state.risk_scores = None
     else:
-        logger.warning("Risk scores not found: %s — run scripts/process_accidents.py first", settings.RISK_SCORES_PATH)
-        app.state.risk_scores = None
+        # Roads GeoDataFrame (用於 spatial join)
+        if Path(settings.ROADS_GDF_PATH).exists():
+            try:
+                app.state.roads_gdf = load_roads_gdf(settings.ROADS_GDF_PATH)
+            except Exception as e:
+                logger.error("Failed to load roads GDF: %s", e)
+                app.state.roads_gdf = None
+        else:
+            logger.warning("Roads GDF not found: %s", settings.ROADS_GDF_PATH)
+            app.state.roads_gdf = None
+
+        # Risk Scores
+        if Path(settings.RISK_SCORES_PATH).exists():
+            try:
+                app.state.risk_scores = load_risk_scores(settings.RISK_SCORES_PATH)
+            except Exception as e:
+                logger.error("Failed to load risk scores: %s", e)
+                app.state.risk_scores = None
+        else:
+            logger.warning("Risk scores not found: %s — run scripts/process_accidents.py first", settings.RISK_SCORES_PATH)
+            app.state.risk_scores = None
 
     logger.info("Startup complete.")
     yield
 
     logger.info("Shutting down...")
+    if getattr(app.state, "db_engine", None) is not None:
+        app.state.db_engine.dispose()
 
 
 app = FastAPI(

@@ -6,6 +6,11 @@ class Settings(BaseSettings):
 
     GOOGLE_ROUTES_API_KEY: str = ""
 
+    # PostGIS（002 Wave 2）：開啟後 runtime 從 DB 載 roads_gdf / risk_scores（graph 仍 pkl）。
+    # 預設關閉 → 行為與現況相同（讀 pkl/json）。開啟需 DB 起著、已跑 load_to_postgis，且裝了 [db] 依賴。
+    USE_POSTGIS: bool = False
+    DATABASE_URL: str = "postgresql+psycopg://bikerisk:bikerisk_dev@localhost:5432/bikerisk"
+
     # 資料路徑
     ROADS_GPKG_PATH: str = "data/raw/gis_osm_roads_free_1.gpkg"
     ACCIDENTS_GPKG_PATH: str = "data/raw/accidents_epsg3857.gpkg"
