@@ -337,3 +337,33 @@ Data Source Manager → PostgreSQL → New：host `localhost`、port `5432`、db
   ```
 - **停止 / 清除**：`docker compose stop postgis`（資料留在 `pgdata`）；`docker compose down -v` 會**刪除 volume**（資料清空）。
 - Windows：連線 host 同為 `localhost`；venv 啟動與行內環境變數差異見 §1、§4。
+
+### 5.5 Wave 2（選用）— 讓 API runtime 從 DB 載資料
+
+預設 API 讀 pkl/json（§1）。設 `USE_POSTGIS=true` 後，啟動時改從 PostGIS 載
+`roads_gdf`（`roads` 表）與 `risk_scores`（`road_risk` 表）；**路網圖仍讀 `taiwan_graph.pkl`**
+（NetworkX 不從 DB 建）。資料內容與 pkl/json 相同，路由行為不變。
+
+前置：DB 起著且已跑 `load_to_postgis`（§5.2）、裝了 `[db]` 依賴。
+
+**本機 venv**：
+
+```bash
+cd backend
+pip install -e ".[db]"                  # 若還沒裝
+USE_POSTGIS=true uvicorn app.main:app --host 0.0.0.0 --port 8000
+# 或在 .env 設 USE_POSTGIS=true 後照 §1.4 啟動
+```
+
+啟動 log 會出現 `USE_POSTGIS=on → 從 PostGIS 載…`；`/api/health` 的 `risk_scores_loaded` 應為 true。
+
+**Docker**：需要三件事——
+1. `backend/Dockerfile` 的 `pip install -e .` 改成 `pip install -e ".[db]"` 重建；
+2. `backend/.env` 設 `USE_POSTGIS=true`（`DATABASE_URL` 用 compose 內 host `postgis`）；
+3. backend 需在 postgis **healthy 後**才啟動——在 compose 的 `backend` 加：
+   ```yaml
+   depends_on:
+     postgis:
+       condition: service_healthy
+   ```
+   （預設未加，以保持 pkl 模式下 backend 不依賴 DB。）
