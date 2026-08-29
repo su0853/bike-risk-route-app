@@ -143,6 +143,8 @@ backend/data/processed/risk_scores.json
 
 這些檔案可由資料管線重建。QGIS 匯出的 `.gpkg` 視覺化檔案不是 runtime 必需。
 
+選用：可將上述產物匯入 **PostGIS** 供 SQL 查詢 / QGIS 疊圖；runtime 預設不依賴它（另有開關可讓 API 改從 DB 載）。見 [`docs/deployment.md`](./docs/deployment.md) §5。
+
 ---
 
 ## Documentation
