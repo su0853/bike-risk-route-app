@@ -87,6 +87,9 @@ Dijkstra + 風險加權圖                         Google Routes API v2
 
 ## 3. 離線資料預處理
 
+> `scripts/` 為薄 CLI 包裝，實際邏輯在 `app/services/`（`build_graph.py` → `graph_builder`；
+> `process_accidents.py` → `risk_engine`）。下列以腳本為進入點，核心函式見 §4 服務層模組地圖。
+
 ### 3.1 路網圖建構（`scripts/build_graph.py`）
 
 **輸入**：`gis_osm_roads_free_1.gpkg`（由 `download_roads_geofabrik.py` 從 Geofabrik URL 下載、抽出 roads 圖層並重投影至 EPSG:3857）
@@ -186,6 +189,33 @@ P99 截斷 + [0, 1] 縮放：
 
 ## 4. 後端服務架構
 
+核心邏輯集中在 `app/services/`；`scripts/`（離線）與 API routers（runtime）都只是呼叫這些模組。
+
+### 4.0 服務層模組地圖（`app/services/`）
+
+| 模組 | 職責（主要函式） | 使用時機 |
+|------|------------------|----------|
+| `graph_builder.py` | 讀/篩選道路、`build_graph`（拓撲修復，§3.1）、KDTree（`build_node_tree` / `get_nearest_node`）、graph & roads_gdf 存取 | 離線建圖 + runtime 節點吸附 |
+| `risk_engine.py` | `load_accidents`、`compute_accident_weights`、`assign_accidents_to_roads`（snap）、`aggregate_edge_risk`（raw 密度）、`normalize_risk_scores`（§3.2） | 離線風險計算 |
+| `path_planner.py` | `apply_risk_weights`、`find_safest_route`（Dijkstra）、`compute_route_stats`、風險分類 | runtime 安全路線 |
+| `google_routes.py` | `fetch_cycling_routes`（Google Routes API v2） | runtime 候選路線 |
+| `route_evaluator.py` | Google polyline → snap 道路 → 風險標註、`evaluate_all_routes` | runtime 路線評估 |
+| `db_source.py` | （選用，`USE_POSTGIS`）從 PostGIS 載 `roads_gdf` / `risk_scores` | runtime 啟動（Wave 2） |
+
+- **離線**（scripts 進入點）：`graph_builder` + `risk_engine`。
+- **runtime**（API 進入點）：`path_planner` + `google_routes` + `route_evaluator` + `graph_builder` 的 KDTree。
+
+request 進來後的服務串接（對照 §1 的圖）：
+
+```text
+POST /api/navigate
+  ├─ get_nearest_node()×2        (graph_builder KDTree：起/終點 → 圖節點)
+  ├─ asyncio.gather:
+  │    ├─ find_safest_route()     (path_planner：apply_risk_weights → Dijkstra → compute_route_stats)
+  │    └─ fetch_cycling_routes()  (google_routes：Google 候選)
+  └─ evaluate_all_routes()        (route_evaluator：Google polyline → snap roads_gdf → 風險 → 合併排序)
+```
+
 ### 4.1 啟動載入（`app/main.py`）
 
 FastAPI `lifespan` 在啟動時將三份資料載入 `app.state`：
@@ -195,6 +225,9 @@ FastAPI `lifespan` 在啟動時將三份資料載入 `app.state`：
 | `app.state.graph` | `taiwan_graph.pkl` | Dijkstra 路線規劃 |
 | `app.state.roads_gdf` | `roads_gdf.pkl` | Google 路線空間 Join |
 | `app.state.risk_scores` | `risk_scores.json` | 風險分數查詢 |
+
+> 選用（`USE_POSTGIS=true`，Wave 2）：`roads_gdf` / `risk_scores` 改由 `db_source.py` 從 PostGIS 載入
+> （`graph` 仍讀 pkl）。資料內容與 pkl/json 相同、路由行為不變。見 `docs/deployment.md` §5。
 
 同時建立 KDTree（`scipy.spatial.cKDTree`）：
 
