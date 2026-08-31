@@ -1,9 +1,9 @@
 """
-從 PostGIS 載入 runtime 資料（002 Wave 2）。
+從 PostGIS 載入 runtime 資料（002 DB-centric）。
 
-只在 settings.USE_POSTGIS 開啟時使用；否則 runtime 照舊讀 pkl/json。
-graph 仍走 pkl（NetworkX 不從 DB 建）；這裡只載 roads_gdf 與 risk_scores。
-需要 [db] 依賴（sqlalchemy / geoalchemy2 / psycopg）與已跑過 load_to_postgis 的 DB。
+API runtime 一律用這裡載 roads_gdf 與 risk_scores；graph 仍走 pkl（NetworkX 不從 DB 建）。
+另含 load_accidents_from_db，供 rebuild_from_db 從 DB primary 重算風險。
+需要 [db] 依賴（sqlalchemy / geoalchemy2 / psycopg）與已跑過 load_to_postgis / rebuild_from_db 的 DB。
 """
 import logging
 

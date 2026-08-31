@@ -7,8 +7,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.routers import geocode, health, navigate
-from app.services.graph_builder import build_node_tree, load_graph, load_roads_gdf
-from app.services.risk_engine import load_risk_scores
+from app.services.db_source import (
+    load_risk_scores_from_db,
+    load_roads_gdf_from_db,
+    make_engine,
+)
+from app.services.graph_builder import build_node_tree, load_graph
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,47 +38,17 @@ async def lifespan(app: FastAPI):
         logger.warning("Graph file not found: %s — run scripts/build_graph.py first", settings.GRAPH_FILE_PATH)
         app.state.graph = None
 
-    # Roads GDF + Risk Scores：USE_POSTGIS 決定來源（002 Wave 2）。graph 一律 pkl（上方）。
+    # Roads GDF + Risk Scores：一律從 PostGIS 載入（002 DB-centric）。graph 仍讀 pkl（上方）。
     app.state.db_engine = None
-    if settings.USE_POSTGIS:
-        logger.info("USE_POSTGIS=on → 從 PostGIS 載 roads_gdf / risk_scores")
-        try:
-            from app.services.db_source import (
-                load_risk_scores_from_db,
-                load_roads_gdf_from_db,
-                make_engine,
-            )
-
-            engine = make_engine(settings.DATABASE_URL)
-            app.state.db_engine = engine
-            app.state.roads_gdf = load_roads_gdf_from_db(engine)
-            app.state.risk_scores = load_risk_scores_from_db(engine)
-        except Exception as e:
-            logger.error("Failed to load from PostGIS: %s", e)
-            app.state.roads_gdf = None
-            app.state.risk_scores = None
-    else:
-        # Roads GeoDataFrame (用於 spatial join)
-        if Path(settings.ROADS_GDF_PATH).exists():
-            try:
-                app.state.roads_gdf = load_roads_gdf(settings.ROADS_GDF_PATH)
-            except Exception as e:
-                logger.error("Failed to load roads GDF: %s", e)
-                app.state.roads_gdf = None
-        else:
-            logger.warning("Roads GDF not found: %s", settings.ROADS_GDF_PATH)
-            app.state.roads_gdf = None
-
-        # Risk Scores
-        if Path(settings.RISK_SCORES_PATH).exists():
-            try:
-                app.state.risk_scores = load_risk_scores(settings.RISK_SCORES_PATH)
-            except Exception as e:
-                logger.error("Failed to load risk scores: %s", e)
-                app.state.risk_scores = None
-        else:
-            logger.warning("Risk scores not found: %s — run scripts/process_accidents.py first", settings.RISK_SCORES_PATH)
-            app.state.risk_scores = None
+    try:
+        engine = make_engine(settings.DATABASE_URL)
+        app.state.db_engine = engine
+        app.state.roads_gdf = load_roads_gdf_from_db(engine)
+        app.state.risk_scores = load_risk_scores_from_db(engine)
+    except Exception as e:
+        logger.error("無法從 PostGIS 載入（DB 起著、且 rebuild_from_db 跑過了嗎？）：%s", e)
+        app.state.roads_gdf = None
+        app.state.risk_scores = None
 
     logger.info("Startup complete.")
     yield
