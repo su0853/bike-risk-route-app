@@ -52,6 +52,8 @@ build 時注入 AndroidManifest，靠 package + SHA-1 限制而非保密）。�
 事故的 cleaned CSV **已隨 repo bundle 在 `backend/data/cleaned/`**（自行車事故，107–109，見該目錄
 `SOURCE.md`），預設可直接用；道路由腳本從 Geofabrik URL 下載。
 
+DB-centric：roads / accidents 存 PostGIS（primary），API 從 DB 載；路網圖以 `taiwan_graph.pkl` 快取。
+先啟動 DB（`docker compose up -d postgis`，或本機 Postgres+PostGIS）並在 `.env` 設 `DATABASE_URL`，
 在 `backend/` 依序執行：
 
 ```bash
@@ -61,12 +63,15 @@ python -m scripts.prepare_accidents_gpkg
 # b. 下載道路 → 單圖層 GPKG（~266MB 下載）
 python -m scripts.download_roads_geofabrik
 
-# c. 建立路網圖（含路口拓撲修復）→ taiwan_graph.pkl + roads_gdf.pkl
-python -m scripts.build_graph
+# c. 種入 DB primary（原始檔 → DB 的 roads / accidents）
+python -m scripts.load_to_postgis --tables roads,accidents
 
-# d. 計算路段風險 → risk_scores.json
-python -m scripts.process_accidents
+# d. 由 DB 衍生（拓撲修復 → taiwan_graph.pkl 快取 + road_risk / graph_* / view）
+python -m scripts.rebuild_from_db
 ```
+
+> 之後在 DB 編輯 roads / accidents → 重跑 `python -m scripts.rebuild_from_db`
+> （自動偵測變動、只重建需要的部分；`--check` 只報告、`--force` 強制）。
 
 **從政府源頭重建 cleaned（選用；要更新年度或稽核 ETL 流程時）**：
 
@@ -82,24 +87,29 @@ snap 成功率 ~94.85%。
 
 **資料檔大小與磁碟需求**（實測）：
 
-| 檔案 | 大小 | runtime 必需 |
+| 檔案 / 資源 | 大小 | runtime 必需 |
 |------|------|:---:|
-| `data/raw/gis_osm_roads_free_1.gpkg` | ~248 MB | 建圖用 |
-| `data/raw/accidents_epsg3857.gpkg` | ~11 MB | 算風險用 |
-| `data/processed/taiwan_graph.pkl` | ~368 MB | 是（啟動載入）|
-| `data/processed/roads_gdf.pkl` | ~162 MB | 是（啟動載入）|
-| `data/processed/risk_scores.json` | ~15 MB | 是（啟動載入）|
+| **PostGIS**（roads/accidents/road_risk…）| — | 是（API 從 DB 載 roads/risk）|
+| `data/raw/gis_osm_roads_free_1.gpkg` | ~248 MB | 種 DB 用 |
+| `data/raw/accidents_epsg3857.gpkg` | ~11 MB | 種 DB 用 |
+| `data/processed/taiwan_graph.pkl` | ~368 MB | 是（圖快取，啟動載入）|
+| `data/processed/roads_gdf.pkl` | ~162 MB | 否（DB 取代）|
+| `data/processed/risk_scores.json` | ~15 MB | 否（DB 取代）|
 | `data/processed/*.gpkg`（QGIS 匯出）| ~1.4 GB | 否（僅視覺化）|
 
-- 後端啟動只需 processed 三個核心檔（~545 MB）；raw（~260 MB）僅重建時需要。
-- QGIS 匯出（`risk_scores.gpkg` / `taiwan_graph.gpkg` / `osmnx_*.gpkg`，~1.4 GB）**非 runtime 必需**，可另存或刪除。
-- 完整重建（含下載 266 MB 道路 zip）建議預留 **~4 GB** 空閒磁碟。
+- 後端啟動需 **PostGIS**（roads/risk）+ `taiwan_graph.pkl`（~368 MB 圖快取）；
+  raw（~260 MB）、`roads_gdf.pkl`/`risk_scores.json` 僅建置或舊檔案管線用。
+- QGIS 疊圖直接連 PostGIS（見 §5）；processed `*.gpkg` 匯出檔非 runtime 必需。
+- 完整重建（含下載 266 MB 道路 zip + DB）建議預留 **~4 GB** 空閒磁碟。
 
 **Fast-path（方案 B，未來選項）**：若不想完整重建，之後可提供 processed 三個核心檔（~545 MB）
 的下載（GitHub Releases / 雲端），clone 後放到 `data/processed/` 直接啟動。目前尚未提供，
 以完整重建為主。
 
 ### 1.4 啟動 API
+
+需先完成 §1.3（DB 起著、已種 primary + 跑過 `rebuild_from_db`）。API 啟動時從 DB 載 roads/risk、
+從 `taiwan_graph.pkl` 載圖；DB 未就緒會 log 錯誤且路由回 503。
 
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000
@@ -279,12 +289,11 @@ New-NetFirewallRule -DisplayName "Bike backend 8000 (dev)" -Direction Inbound `
 
 ---
 
-## 5. PostGIS（選用）— 資料檢視 / QGIS
+## 5. PostGIS — 資料來源 / QGIS
 
-定位：PostGIS 作為**真相來源 / 查詢 / QGIS 圖層**；**API runtime 目前不依賴它**（backlog 002 Wave 1）。
-平常跑 API 不需要起它，只有要用 QGIS 疊圖或做 SQL 查詢時才起。先完成 §1.3 產生
-`roads_gdf`/`taiwan_graph`/`risk_scores`/`accidents` 等產物，再匯入 DB。欄位定義見
-[`data_dictionary.md`](data_dictionary.md)。
+DB-centric（002）：PostGIS 是 **runtime 資料來源**（API 從中載 roads / risk）＋ QGIS 疊圖層。
+起 DB、種 primary、`rebuild_from_db` 的流程見 §1.3；本節補充 DB 細節、QGIS 連線與實務註記。
+欄位定義見 [`data_dictionary.md`](data_dictionary.md)。
 
 ### 5.1 起資料庫
 
@@ -338,32 +347,12 @@ Data Source Manager → PostgreSQL → New：host `localhost`、port `5432`、db
 - **停止 / 清除**：`docker compose stop postgis`（資料留在 `pgdata`）；`docker compose down -v` 會**刪除 volume**（資料清空）。
 - Windows：連線 host 同為 `localhost`；venv 啟動與行內環境變數差異見 §1、§4。
 
-### 5.5 Wave 2（選用）— 讓 API runtime 從 DB 載資料
+### 5.5 runtime 從 DB 載（現為預設）
 
-預設 API 讀 pkl/json（§1）。設 `USE_POSTGIS=true` 後，啟動時改從 PostGIS 載
-`roads_gdf`（`roads` 表）與 `risk_scores`（`road_risk` 表）；**路網圖仍讀 `taiwan_graph.pkl`**
-（NetworkX 不從 DB 建）。資料內容與 pkl/json 相同，路由行為不變。
+API 啟動一律從 PostGIS 載 `roads_gdf`（`roads` 表）與 `risk_scores`（`road_risk` 表）；
+路網圖仍讀 `taiwan_graph.pkl`（NetworkX 不從 DB 建）。無開關（早期的 `USE_POSTGIS` 已移除）。
 
-前置：DB 起著且已跑 `load_to_postgis`（§5.2）、裝了 `[db]` 依賴。
-
-**本機 venv**：
-
-```bash
-cd backend
-pip install -e ".[db]"                  # 若還沒裝
-USE_POSTGIS=true uvicorn app.main:app --host 0.0.0.0 --port 8000
-# 或在 .env 設 USE_POSTGIS=true 後照 §1.4 啟動
-```
-
-啟動 log 會出現 `USE_POSTGIS=on → 從 PostGIS 載…`；`/api/health` 的 `risk_scores_loaded` 應為 true。
-
-**Docker**：需要三件事——
-1. `backend/Dockerfile` 的 `pip install -e .` 改成 `pip install -e ".[db]"` 重建；
-2. `backend/.env` 設 `USE_POSTGIS=true`（`DATABASE_URL` 用 compose 內 host `postgis`）；
-3. backend 需在 postgis **healthy 後**才啟動——在 compose 的 `backend` 加：
-   ```yaml
-   depends_on:
-     postgis:
-       condition: service_healthy
-   ```
-   （預設未加，以保持 pkl 模式下 backend 不依賴 DB。）
+- **本機 venv**：`pip install -e ".[db]"` → `.env` 設 `DATABASE_URL`（host 用 `localhost`）→ 照 §1.4 啟動。
+- **Docker**：`backend/Dockerfile` 已 `pip install -e ".[db]"`；compose 的 `backend` 已 `depends_on postgis`
+  （healthy 後才起）；`.env` 的 `DATABASE_URL` host 用 `postgis`。
+- `/api/health` 的 `risk_scores_loaded` 為 true、`risk_score_count > 0` 代表 DB 載入成功。

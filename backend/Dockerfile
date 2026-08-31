@@ -7,10 +7,11 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # 先裝依賴 + app 套件（editable）。data/ 由 .dockerignore 排除、runtime 掛載，不進 image。
+# [db]：DB-centric（002）下 runtime 一律連 PostGIS，需 sqlalchemy/geoalchemy2/psycopg。
 COPY pyproject.toml ./
 COPY app ./app
 COPY scripts ./scripts
-RUN pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir -e ".[db]"
 
 EXPOSE 8000
 

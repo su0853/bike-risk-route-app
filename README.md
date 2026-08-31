@@ -29,7 +29,7 @@ Bike Risk Route App 是一個台灣自行車安全路線規劃 prototype。系�
 
 - turn-by-turn navigation：Google / Mapbox Navigation SDK 仍在 prototype 驗證階段。
 - 風險模型校準：目前係數與 P99 normalization 為 heuristic，仍需以 QGIS / notebook / 實際案例校準。
-- PostGIS：目前 runtime 使用 pkl / json artifacts；PostGIS 為後續資料管理方向。
+- DB 端路由：runtime 已以 PostGIS 為資料來源（roads/accidents primary + 衍生表）；把路由（Dijkstra）搬進 DB（pgRouting）為後續研究方向（prototype 已驗證可行）。
 
 ---
 
@@ -54,7 +54,7 @@ Route response（geometry, risk score, distance, duration）
 Frontend map display
 ```
 
-後端所需的道路圖與風險分數由**可重現的離線管線**產生（Geofabrik 道路 + 政府事故資料 → `taiwan_graph.pkl` / `roads_gdf.pkl` / `risk_scores.json`）；實際指令見 [Quick Start](#quick-start)，內部機制（拓撲修復、KDTree、風險計算）見 [`ARCHITECTURE.md`](./ARCHITECTURE.md)。
+後端所需的道路圖與風險分數由**可重現的管線**產生（Geofabrik 道路 + 政府事故資料 → PostGIS 的 `roads` / `accidents` / `road_risk` + `taiwan_graph.pkl` 圖快取）；實際指令見 [Quick Start](#quick-start)，內部機制（拓撲修復、KDTree、風險計算）見 [`ARCHITECTURE.md`](./ARCHITECTURE.md)。
 
 ---
 
@@ -62,22 +62,30 @@ Frontend map display
 
 詳細步驟見 [`docs/deployment.md`](./docs/deployment.md)。以下為最短流程。
 
-### 1. Backend with Docker
+### 1. Backend with Docker（PostGIS-backed）
+
+後端以 **PostGIS 為資料來源**：roads / accidents 存 DB，API 啟動時從 DB 載；路網圖以 `taiwan_graph.pkl` 快取（NetworkX 不進 DB）。
 
 ```bash
 cp backend/.env.example backend/.env
 # 編輯 backend/.env，設定 GOOGLE_ROUTES_API_KEY
 
 docker compose build backend
+docker compose up -d postgis          # 啟動資料庫
 
-# cleaned CSV 已 bundle 在 backend/data/cleaned（隨 volume 掛載），預設免 CLEANED_CSV_DIR
+# 種入 DB primary（原始檔 → DB 的 roads / accidents）
+# cleaned CSV 已 bundle 在 backend/data/cleaned，預設免 CLEANED_CSV_DIR
 docker compose run --rm backend python -m scripts.prepare_accidents_gpkg
 docker compose run --rm backend python -m scripts.download_roads_geofabrik
-docker compose run --rm backend python -m scripts.build_graph
-docker compose run --rm backend python -m scripts.process_accidents
+docker compose run --rm backend python -m scripts.load_to_postgis --tables roads,accidents
 
-docker compose up backend
+# 由 DB 衍生（拓撲修復 → taiwan_graph.pkl 快取 + road_risk / graph_* / view）
+docker compose run --rm backend python -m scripts.rebuild_from_db
+
+docker compose up backend             # API：圖讀 pkl、roads/risk 讀 DB
 ```
+
+> 之後在 DB 編輯 roads / accidents → 重跑 `rebuild_from_db`（自動偵測變動、只重建需要的部分：只改事故約 17s、改道路約 78s）→ 重啟 backend。
 
 Health check：
 
@@ -133,17 +141,14 @@ Google key 原則：
 
 大型資料與產物不放入 git（道路 gpkg、pkl、政府原始 CSV 等）。例外：自行車事故 cleaned CSV（`backend/data/cleaned/`，約 6.7MB，政府開放資料）已 bundle，讓 clone 後可直接重建；來源見該目錄 `SOURCE.md`。
 
-Runtime 必要 processed artifacts：
+Runtime 需要（DB-centric）：
 
-```text
-backend/data/processed/taiwan_graph.pkl
-backend/data/processed/roads_gdf.pkl
-backend/data/processed/risk_scores.json
-```
+- **PostGIS**：`roads` / `accidents`（primary，可在 DB 直接編輯）+ `road_risk` 等衍生表。
+- `backend/data/processed/taiwan_graph.pkl`：路網圖快取（NetworkX 不進 DB）。
 
-這些檔案可由資料管線重建。QGIS 匯出的 `.gpkg` 視覺化檔案不是 runtime 必需。
-
-選用：可將上述產物匯入 **PostGIS** 供 SQL 查詢 / QGIS 疊圖；runtime 預設不依賴它（另有開關可讓 API 改從 DB 載）。見 [`docs/deployment.md`](./docs/deployment.md) §5。
+兩者皆由 `scripts/rebuild_from_db`（讀 DB primary → 建圖 pkl + 刷新衍生表）產生。
+QGIS 疊圖直接連 PostGIS（見 [`docs/deployment.md`](./docs/deployment.md) §5）。
+`roads_gdf.pkl` / `risk_scores.json` 為舊檔案管線產物，DB-centric runtime 已不使用。
 
 ---
 

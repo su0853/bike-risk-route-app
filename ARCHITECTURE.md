@@ -56,6 +56,10 @@ Dijkstra + 風險加權圖                         Google Routes API v2
 ## 2. 整體資料流程
 
 > 各檔案的欄位、型別與意義見 [`docs/data_dictionary.md`](docs/data_dictionary.md)。
+>
+> **Runtime（DB-centric，002）**：下圖為**建置**管線（原始檔 → 產物）。實際服務時，roads/accidents 存 PostGIS
+> 為 primary，API 從 DB 載 roads/risk、從 `taiwan_graph.pkl` 載圖；DB primary 編輯後由
+> `scripts/rebuild_from_db` 重新衍生（拓撲修復 → 圖 pkl + `road_risk`/`graph_*`）。見 §4.1。
 
 ```
 [上游來源]
@@ -200,7 +204,7 @@ P99 截斷 + [0, 1] 縮放：
 | `path_planner.py` | `apply_risk_weights`、`find_safest_route`（Dijkstra）、`compute_route_stats`、風險分類 | runtime 安全路線 |
 | `google_routes.py` | `fetch_cycling_routes`（Google Routes API v2） | runtime 候選路線 |
 | `route_evaluator.py` | Google polyline → snap 道路 → 風險標註、`evaluate_all_routes` | runtime 路線評估 |
-| `db_source.py` | （選用，`USE_POSTGIS`）從 PostGIS 載 `roads_gdf` / `risk_scores` | runtime 啟動（Wave 2） |
+| `db_source.py` | 從 PostGIS 載 `roads_gdf` / `risk_scores`（runtime）；`load_accidents_from_db`（供 rebuild） | runtime 啟動 + 衍生 |
 
 - **離線**（scripts 進入點）：`graph_builder` + `risk_engine`。
 - **runtime**（API 進入點）：`path_planner` + `google_routes` + `route_evaluator` + `graph_builder` 的 KDTree。
@@ -222,12 +226,13 @@ FastAPI `lifespan` 在啟動時將三份資料載入 `app.state`：
 
 | 屬性 | 來源 | 用途 |
 |------|------|------|
-| `app.state.graph` | `taiwan_graph.pkl` | Dijkstra 路線規劃 |
-| `app.state.roads_gdf` | `roads_gdf.pkl` | Google 路線空間 Join |
-| `app.state.risk_scores` | `risk_scores.json` | 風險分數查詢 |
+| `app.state.graph` | `taiwan_graph.pkl`（圖快取）| Dijkstra 路線規劃 |
+| `app.state.roads_gdf` | PostGIS `roads` 表 | Google 路線空間 Join |
+| `app.state.risk_scores` | PostGIS `road_risk` 表 | 風險分數查詢 |
 
-> 選用（`USE_POSTGIS=true`，Wave 2）：`roads_gdf` / `risk_scores` 改由 `db_source.py` 從 PostGIS 載入
-> （`graph` 仍讀 pkl）。資料內容與 pkl/json 相同、路由行為不變。見 `docs/deployment.md` §5。
+> DB-centric（002）：`roads_gdf` / `risk_scores` 由 `db_source.py` 從 PostGIS 載入；`graph` 仍讀 pkl 快取
+> （NetworkX 不進 DB）。DB primary（roads/accidents）編輯後由 `scripts/rebuild_from_db` 重新衍生
+> （圖 pkl + `road_risk` + `graph_*`）。見 `docs/deployment.md` §1.3、§5。
 
 同時建立 KDTree（`scipy.spatial.cKDTree`）：
 

@@ -21,7 +21,10 @@ services:
       dockerfile: Dockerfile
     image: bike-risk-backend
     env_file:
-      - backend/.env                 # 注入 GOOGLE_ROUTES_API_KEY 等為環境變數（pydantic 直接讀）
+      - backend/.env                 # 注入 GOOGLE_ROUTES_API_KEY / DATABASE_URL 等（pydantic 直接讀）
+    depends_on:
+      postgis:
+        condition: service_healthy   # DB-centric：runtime 一律連 DB，需等 postgis 就緒
     ports:
       - "8000:8000"                  # API；image 內以 --host 0.0.0.0 監聽
     volumes:
