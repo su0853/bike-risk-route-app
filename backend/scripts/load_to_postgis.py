@@ -192,8 +192,9 @@ def main() -> None:
         if "graph_edges" in tables:
             load_graph_edges(engine, G)
 
-    # 只要 roads 與 road_risk 都在（或已存在）就建 view
-    if {"roads", "road_risk"} & set(tables):
+    # 只有在載入 road_risk 時才建 view（否則 road_risk 表可能尚不存在，如 bootstrap 的
+    # --tables roads,accidents；那條路徑的 view 由後續 rebuild_from_db 建立）
+    if "road_risk" in tables:
         create_view(engine)
 
     logger.info("完成：%s", ", ".join(tables))
