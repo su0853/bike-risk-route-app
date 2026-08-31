@@ -8,6 +8,7 @@ graph 仍走 pkl（NetworkX 不從 DB 建）；這裡只載 roads_gdf 與 risk_s
 import logging
 
 import geopandas as gpd
+import pandas as pd
 from sqlalchemy import create_engine, text
 
 logger = logging.getLogger(__name__)
@@ -41,3 +42,23 @@ def load_risk_scores_from_db(engine) -> dict[str, float]:
     scores = {str(osm_id): float(v) for osm_id, v in rows}
     logger.info("Risk scores loaded from PostGIS: %d entries", len(scores))
     return scores
+
+
+def load_accidents_from_db(engine) -> gpd.GeoDataFrame:
+    """
+    從 accidents 表載入 GeoDataFrame，作為 risk_engine.load_accidents(gpkg) 的替代（002 甲-A）。
+
+    對齊 load_accidents 的輸出：幾何欄命名 "geometry"、CRS 3857、accident_datetime 為 datetime、
+    去除無效座標/時間。供 rebuild_from_db 從 DB primary 重算風險。
+    """
+    gdf = gpd.read_postgis(
+        "SELECT case_type, accident_datetime, death_count, injury_count, location, geom FROM accidents",
+        engine,
+        geom_col="geom",
+    )
+    gdf = gdf.rename_geometry("geometry")
+    gdf["accident_datetime"] = pd.to_datetime(gdf["accident_datetime"], errors="coerce")
+    before = len(gdf)
+    gdf = gdf.dropna(subset=["geometry", "accident_datetime"]).copy()
+    logger.info("Accidents loaded from PostGIS: %d (dropped %d invalid)", len(gdf), before - len(gdf))
+    return gdf

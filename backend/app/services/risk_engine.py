@@ -201,22 +201,26 @@ def normalize_risk_scores(
     return normalized
 
 
-def build_risk_scores(
-    gpkg_path: str,
+def compute_risk_from_accidents(
+    accidents: gpd.GeoDataFrame,
     roads: gpd.GeoDataFrame,
     settings: Settings,
-) -> dict[str, float]:
-    """主入口：load → weights → assign → aggregate → normalize。"""
-    accidents = load_accidents(gpkg_path)
+) -> tuple[dict[str, float], dict[str, float]]:
+    """
+    核心：由 accidents GDF + roads 算出 (raw_all, normalized)。
+
+    供「檔案來源」(build_risk_scores) 與「DB 來源」(rebuild_from_db) 共用；
+    回傳 raw + normalized，讓 DB 的 road_risk 表兩者都能寫入。
+    """
     weights = compute_accident_weights(accidents, settings)
     joined = assign_accidents_to_roads(accidents, roads, settings.SNAP_TOLERANCE_M)
     raw_scores = aggregate_edge_risk(joined, roads, weights)
 
-    # 初始化所有路段為 0
-    all_scores = {str(osm_id): 0.0 for osm_id in roads["osm_id"]}
-    all_scores.update(raw_scores)
+    # 初始化所有路段為 0，再覆蓋有事故者
+    raw_all = {str(osm_id): 0.0 for osm_id in roads["osm_id"]}
+    raw_all.update({str(k): float(v) for k, v in raw_scores.items()})
 
-    normalized = normalize_risk_scores(all_scores, settings.RISK_CLIP_PERCENTILE)
+    normalized = normalize_risk_scores(raw_all, settings.RISK_CLIP_PERCENTILE)
 
     nonzero = sum(1 for v in normalized.values() if v > 0)
     logger.info(
@@ -225,6 +229,17 @@ def build_risk_scores(
         nonzero,
         max(normalized.values()),
     )
+    return raw_all, normalized
+
+
+def build_risk_scores(
+    gpkg_path: str,
+    roads: gpd.GeoDataFrame,
+    settings: Settings,
+) -> dict[str, float]:
+    """主入口（檔案來源）：load accidents → compute_risk_from_accidents → normalized。"""
+    accidents = load_accidents(gpkg_path)
+    _, normalized = compute_risk_from_accidents(accidents, roads, settings)
     return normalized
 
 
