@@ -53,8 +53,8 @@ build 時注入 AndroidManifest，靠 package + SHA-1 限制而非保密）。�
 `SOURCE.md`），預設可直接用；道路由腳本從 Geofabrik URL 下載。
 
 DB-centric：roads / accidents 存 PostGIS（primary），API 從 DB 載；路網圖以 `taiwan_graph.pkl` 快取。
-先啟動 DB（`docker compose up -d postgis`，或本機 Postgres+PostGIS）並在 `.env` 設 `DATABASE_URL`，
-在 `backend/` 依序執行：
+先啟動 DB（`docker compose up -d postgis`，或本機 Postgres+PostGIS）。連線設定：Docker 由 compose 自動帶入；
+本機 venv 預設連 `localhost:5432/bikerisk`（要改才設 `DATABASE_URL`）。在 `backend/` 依序執行：
 
 ```bash
 # a. 事故 cleaned CSV → EPSG:3857 GPKG（用 bundle 的 data/cleaned）
@@ -302,8 +302,9 @@ docker compose up -d postgis     # healthy 後即可連
 ```
 
 - image 用 `imresamu/postgis:16-3.4`（多架構，含 **arm64**；官方 `postgis/postgis` 目前僅 amd64）。
-- 資料存命名 volume `pgdata`（不進 repo）。連線：host `localhost`、port `5432`、db `bikerisk`、
-  user `bikerisk`、密碼見 `POSTGRES_PASSWORD`（開發預設 `bikerisk_dev`，正式部署請換）。
+- 資料存命名 volume `pgdata`（不進 repo）。連線：host `localhost`、port `5432`、db `bikerisk`、user `bikerisk`。
+- **密碼單一來源**：compose 的 `${POSTGRES_PASSWORD}`（預設 `bikerisk_dev`），postgis 服務與 backend 的
+  `DATABASE_URL` 都取自它。正式部署改密碼只需在 **shell** 或 **repo 根目錄的 `.env`** 設 `POSTGRES_PASSWORD=…`（設一次即可）。
 
 ### 5.2 匯入資料
 
@@ -352,7 +353,8 @@ Data Source Manager → PostgreSQL → New：host `localhost`、port `5432`、db
 API 啟動一律從 PostGIS 載 `roads_gdf`（`roads` 表）與 `risk_scores`（`road_risk` 表）；
 路網圖仍讀 `taiwan_graph.pkl`（NetworkX 不從 DB 建）。無開關（早期的 `USE_POSTGIS` 已移除）。
 
-- **本機 venv**：`pip install -e ".[db]"` → `.env` 設 `DATABASE_URL`（host 用 `localhost`）→ 照 §1.4 啟動。
-- **Docker**：`backend/Dockerfile` 已 `pip install -e ".[db]"`；compose 的 `backend` 已 `depends_on postgis`
-  （healthy 後才起）；`.env` 的 `DATABASE_URL` host 用 `postgis`。
+- **本機 venv**：`pip install -e ".[db]"` → 照 §1.4 啟動。`DATABASE_URL` 不設則用預設 `…@localhost`；
+  要改連線才在 `backend/.env` 設 `DATABASE_URL`（host 用 `localhost`）。
+- **Docker**：`backend/Dockerfile` 已 `.[db]`、compose 的 `backend` 已 `depends_on postgis`（healthy 後才起）；
+  **`DATABASE_URL` 由 compose 自動組出**（host `postgis`，密碼取自 `${POSTGRES_PASSWORD}`）——`backend/.env` 不需設。
 - `/api/health` 的 `risk_scores_loaded` 為 true、`risk_score_count > 0` 代表 DB 載入成功。

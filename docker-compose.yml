@@ -21,7 +21,11 @@ services:
       dockerfile: Dockerfile
     image: bike-risk-backend
     env_file:
-      - backend/.env                 # 注入 GOOGLE_ROUTES_API_KEY / DATABASE_URL 等（pydantic 直接讀）
+      - backend/.env                 # 注入 GOOGLE_ROUTES_API_KEY 等（pydantic 直接讀）
+    environment:
+      # DATABASE_URL 由 compose 組出：密碼單一來源 ${POSTGRES_PASSWORD}（同 postgis 服務）。
+      # backend/.env 不需再放 DATABASE_URL / POSTGRES_PASSWORD。host 用服務名 postgis。
+      DATABASE_URL: postgresql+psycopg://bikerisk:${POSTGRES_PASSWORD:-bikerisk_dev}@postgis:5432/bikerisk
     depends_on:
       postgis:
         condition: service_healthy   # DB-centric：runtime 一律連 DB，需等 postgis 就緒
