@@ -23,7 +23,6 @@
 import argparse
 import json
 import logging
-import os
 
 import geopandas as gpd
 import networkx as nx
@@ -38,7 +37,6 @@ from app.services.graph_builder import load_and_filter_roads, load_graph
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("load_to_postgis")
 
-DEFAULT_DB_URL = "postgresql+psycopg://bikerisk:bikerisk_dev@localhost:5432/bikerisk"
 ALL_TABLES = ["roads", "accidents", "road_risk", "graph_nodes", "graph_edges"]
 SRID = settings.CRS_METRIC  # 3857
 
@@ -163,7 +161,7 @@ def create_view(engine) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Load pipeline artifacts into PostGIS (002 Wave 1)")
-    ap.add_argument("--database-url", default=os.getenv("DATABASE_URL", DEFAULT_DB_URL))
+    ap.add_argument("--database-url", default=settings.database_url)
     ap.add_argument("--tables", default=",".join(ALL_TABLES),
                     help=f"逗號分隔，可選：{','.join(ALL_TABLES)}（預設全部）")
     args = ap.parse_args()

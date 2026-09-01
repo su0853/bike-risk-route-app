@@ -21,11 +21,11 @@ services:
       dockerfile: Dockerfile
     image: bike-risk-backend
     env_file:
-      - backend/.env                 # 注入 GOOGLE_ROUTES_API_KEY 等（pydantic 直接讀）
+      - backend/.env                 # 注入 GOOGLE_ROUTES_API_KEY + POSTGRES_PASSWORD 等（pydantic 直接讀）
     environment:
-      # DATABASE_URL 由 compose 組出：密碼單一來源 ${POSTGRES_PASSWORD}（同 postgis 服務）。
-      # backend/.env 不需再放 DATABASE_URL / POSTGRES_PASSWORD。host 用服務名 postgis。
-      DATABASE_URL: postgresql+psycopg://bikerisk:${POSTGRES_PASSWORD:-bikerisk_dev}@postgis:5432/bikerisk
+      # DB-centric：容器內連 postgis 服務（本機 venv 預設 localhost）。
+      # 其餘 DB 設定由 backend/.env 的 POSTGRES_* 提供，config.py 組出 DATABASE_URL。
+      POSTGRES_HOST: postgis
     depends_on:
       postgis:
         condition: service_healthy   # DB-centric：runtime 一律連 DB，需等 postgis 就緒
@@ -37,9 +37,10 @@ services:
 
   postgis:
     image: imresamu/postgis:16-3.4   # 多架構（amd64 + arm64）PostGIS；官方 postgis/postgis 目前僅 amd64
+    env_file:
+      - backend/.env                 # 讀 POSTGRES_PASSWORD（與 backend 同一份 DB 設定；其餘 app 變數 postgis 會忽略）
     environment:
-      POSTGRES_USER: bikerisk
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bikerisk_dev}   # 開發預設；正式部署請換
+      POSTGRES_USER: bikerisk        # 固定；healthcheck 也用 bikerisk
       POSTGRES_DB: bikerisk
     ports:
       - "5432:5432"                  # 給 host 端的 QGIS / psql

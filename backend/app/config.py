@@ -7,8 +7,24 @@ class Settings(BaseSettings):
     GOOGLE_ROUTES_API_KEY: str = ""
 
     # PostGIS（002 DB-centric）：runtime 一律從 DB 載 roads_gdf / risk_scores（graph 仍讀 pkl cache）。
-    # 需 DB 起著、已跑 load_to_postgis + rebuild_from_db。容器內以 .env 覆蓋 host 為 postgis。
-    DATABASE_URL: str = "postgresql+psycopg://bikerisk:bikerisk_dev@localhost:5432/bikerisk"
+    # 連線用元件組出；密碼單一值放 backend/.env 的 POSTGRES_PASSWORD。
+    # host 預設 localhost（本機 venv）；Docker 由 compose 設 POSTGRES_HOST=postgis。
+    # 若設了 DATABASE_URL（完整字串）則直接用它、覆蓋以下元件。
+    POSTGRES_USER: str = "bikerisk"
+    POSTGRES_PASSWORD: str = "bikerisk_dev"
+    POSTGRES_HOST: str = "localhost"
+    POSTGRES_PORT: int = 5432
+    POSTGRES_DB: str = "bikerisk"
+    DATABASE_URL: str = ""
+
+    @property
+    def database_url(self) -> str:
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
+        return (
+            f"postgresql+psycopg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
+            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        )
 
     # 資料路徑
     ROADS_GPKG_PATH: str = "data/raw/gis_osm_roads_free_1.gpkg"

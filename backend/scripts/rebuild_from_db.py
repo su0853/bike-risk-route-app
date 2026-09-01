@@ -16,7 +16,6 @@
 """
 import argparse
 import logging
-import os
 
 import pandas as pd
 from sqlalchemy import text
@@ -30,7 +29,6 @@ from app.services.db_source import (
 from app.services.graph_builder import build_graph, save_graph
 from app.services.risk_engine import compute_risk_from_accidents
 from scripts.load_to_postgis import (
-    DEFAULT_DB_URL,
     create_view,
     load_graph_edges,
     load_graph_nodes,
@@ -112,7 +110,7 @@ def rebuild_risk_only(engine) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Rebuild derived + cache from DB primary (002 甲-A, change-aware)")
-    ap.add_argument("--database-url", default=os.getenv("DATABASE_URL", DEFAULT_DB_URL))
+    ap.add_argument("--database-url", default=settings.database_url)
     ap.add_argument("--check", action="store_true", help="只報告 stale/fresh，不重建")
     ap.add_argument("--force", action="store_true", help="無論指紋是否變動，強制完整重建")
     ap.add_argument("--skip-graph-tables", action="store_true",

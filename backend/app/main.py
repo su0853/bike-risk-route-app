@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI):
     # Roads GDF + Risk Scores：一律從 PostGIS 載入（002 DB-centric）。graph 仍讀 pkl（上方）。
     app.state.db_engine = None
     try:
-        engine = make_engine(settings.DATABASE_URL)
+        engine = make_engine(settings.database_url)
         app.state.db_engine = engine
         app.state.roads_gdf = load_roads_gdf_from_db(engine)
         app.state.risk_scores = load_risk_scores_from_db(engine)

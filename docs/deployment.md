@@ -303,8 +303,9 @@ docker compose up -d postgis     # healthy 後即可連
 
 - image 用 `imresamu/postgis:16-3.4`（多架構，含 **arm64**；官方 `postgis/postgis` 目前僅 amd64）。
 - 資料存命名 volume `pgdata`（不進 repo）。連線：host `localhost`、port `5432`、db `bikerisk`、user `bikerisk`。
-- **密碼單一來源**：compose 的 `${POSTGRES_PASSWORD}`（預設 `bikerisk_dev`），postgis 服務與 backend 的
-  `DATABASE_URL` 都取自它。正式部署改密碼只需在 **shell** 或 **repo 根目錄的 `.env`** 設 `POSTGRES_PASSWORD=…`（設一次即可）。
+- **密碼單一來源 = `backend/.env` 的 `POSTGRES_PASSWORD`**（預設 `bikerisk_dev`）。backend 由 `config.py`
+  以 `POSTGRES_*` 元件組出 `DATABASE_URL`；postgis 服務也 `env_file: backend/.env` 讀同一個密碼。
+  正式部署改密碼只改 `backend/.env` 這一行即可。
 
 ### 5.2 匯入資料
 
@@ -356,5 +357,6 @@ API 啟動一律從 PostGIS 載 `roads_gdf`（`roads` 表）與 `risk_scores`（
 - **本機 venv**：`pip install -e ".[db]"` → 照 §1.4 啟動。`DATABASE_URL` 不設則用預設 `…@localhost`；
   要改連線才在 `backend/.env` 設 `DATABASE_URL`（host 用 `localhost`）。
 - **Docker**：`backend/Dockerfile` 已 `.[db]`、compose 的 `backend` 已 `depends_on postgis`（healthy 後才起）；
-  **`DATABASE_URL` 由 compose 自動組出**（host `postgis`，密碼取自 `${POSTGRES_PASSWORD}`）——`backend/.env` 不需設。
+  **`DATABASE_URL` 由 `config.py` 以 `POSTGRES_*` 組出**（compose 設 `POSTGRES_HOST=postgis`，密碼取自
+  `backend/.env` 的 `POSTGRES_PASSWORD`）——`backend/.env` 只需設 `POSTGRES_PASSWORD`。
 - `/api/health` 的 `risk_scores_loaded` 為 true、`risk_score_count > 0` 代表 DB 載入成功。
