@@ -23,9 +23,11 @@ services:
     env_file:
       - backend/.env                 # 注入 GOOGLE_ROUTES_API_KEY + POSTGRES_PASSWORD 等（pydantic 直接讀）
     environment:
-      # DB-centric：容器內連 postgis 服務（本機 venv 預設 localhost）。
-      # 其餘 DB 設定由 backend/.env 的 POSTGRES_* 提供，config.py 組出 DATABASE_URL。
+      # DB-centric：容器內固定連 postgis 服務的 5432（本機 venv 才用 backend/.env 的 host/port）。
+      # 其餘 DB 設定（USER/PASSWORD/DB）由 backend/.env 提供，config.py 組出 DATABASE_URL。
       POSTGRES_HOST: postgis
+      POSTGRES_PORT: "5432"
+      DATABASE_URL: ""               # 清空，避免 backend/.env 殘留舊 DATABASE_URL 在容器內勝出（改連元件）
     depends_on:
       postgis:
         condition: service_healthy   # DB-centric：runtime 一律連 DB，需等 postgis 就緒
@@ -38,16 +40,14 @@ services:
   postgis:
     image: imresamu/postgis:16-3.4   # 多架構（amd64 + arm64）PostGIS；官方 postgis/postgis 目前僅 amd64
     env_file:
-      - backend/.env                 # 讀 POSTGRES_PASSWORD（與 backend 同一份 DB 設定；其餘 app 變數 postgis 會忽略）
-    environment:
-      POSTGRES_USER: bikerisk        # 固定；healthcheck 也用 bikerisk
-      POSTGRES_DB: bikerisk
+      - backend/.env                 # 讀 POSTGRES_USER/PASSWORD/DB（與 backend 同一份；其餘 app 變數 postgis 會忽略）
     ports:
-      - "5432:5432"                  # 給 host 端的 QGIS / psql
+      - "5432:5432"                  # host 端 QGIS / psql（左=對外埠，有衝突改這裡；右=容器內固定 5432）
     volumes:
       - pgdata:/var/lib/postgresql/data   # 命名 volume 持久化（不進 repo）
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bikerisk -d bikerisk"]
+      # 用容器內的 env（來自 env_file），使用者改 USER/DB 也一致；未設則預設 bikerisk
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-bikerisk} -d $${POSTGRES_DB:-bikerisk}"]
       interval: 5s
       timeout: 3s
       retries: 10
