@@ -34,6 +34,21 @@ _transformer_to_wgs84 = Transformer.from_crs(3857, 4326, always_xy=True)
 _COORD_PRECISION_M = 1
 
 
+def _progress(iterable, show: bool, **kwargs):
+    """show=True 時包上 tqdm 進度條（含 ETA）；未裝 tqdm 或 show=False 則原樣回傳。
+
+    只有 CLI 腳本會傳 show_progress=True；API/測試維持 show=False，不受影響、也不需要 tqdm。
+    """
+    if not show:
+        return iterable
+    try:
+        from tqdm import tqdm
+    except ImportError:
+        logger.info("(未安裝 tqdm，略過進度條；pip install tqdm 可啟用)")
+        return iterable
+    return tqdm(iterable, **kwargs)
+
+
 def _round_coord(x: float, y: float) -> tuple[int, int]:
     return (round(x / _COORD_PRECISION_M), round(y / _COORD_PRECISION_M))
 
@@ -67,7 +82,7 @@ def load_and_filter_roads(gpkg_path: str, excluded_fclasses: list[str]) -> gpd.G
     return roads
 
 
-def build_graph(roads_gdf: gpd.GeoDataFrame) -> nx.MultiGraph:
+def build_graph(roads_gdf: gpd.GeoDataFrame, show_progress: bool = False) -> nx.MultiGraph:
     """
     從 Geofabrik 道路 GeoDataFrame 建立連通路網圖。
 
@@ -87,7 +102,10 @@ def build_graph(roads_gdf: gpd.GeoDataFrame) -> nx.MultiGraph:
     coord_to_roads: dict[tuple, set] = defaultdict(set)
     road_data: list[tuple] = []
 
-    for iloc_idx, (_, row) in enumerate(roads_gdf.iterrows()):
+    for iloc_idx, (_, row) in enumerate(_progress(
+        roads_gdf.iterrows(), show_progress,
+        total=len(roads_gdf), desc="建圖 1/2 掃描座標", unit="road", unit_scale=True,
+    )):
         coords = list(row.geometry.coords)
         road_data.append((coords, row))
         for c in coords:
@@ -101,7 +119,10 @@ def build_graph(roads_gdf: gpd.GeoDataFrame) -> nx.MultiGraph:
     G = nx.MultiGraph()
     total_segments = 0
 
-    for coords, row in road_data:
+    for coords, row in _progress(
+        road_data, show_progress,
+        total=len(road_data), desc="建圖 2/2 切割建邊", unit="road", unit_scale=True,
+    ):
         osm_id_str = str(row["osm_id"])
         fclass = row.get("fclass", "")
         oneway = row.get("oneway", "B")

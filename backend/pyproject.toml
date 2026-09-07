@@ -18,6 +18,7 @@ dependencies = [
     "pyproj>=3.5,<4",
     "polyline>=2,<3",
     "scipy>=1.11,<2",
+    "tqdm>=4.66,<5",         # CLI 腳本進度條（build_graph/rebuild_from_db；show_progress=True 才啟用）
 ]
 
 [project.optional-dependencies]

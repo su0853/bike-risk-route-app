@@ -16,6 +16,8 @@
 """
 import argparse
 import logging
+import time
+from contextlib import contextmanager
 
 import pandas as pd
 from sqlalchemy import text
@@ -36,6 +38,15 @@ from scripts.load_to_postgis import (
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("rebuild_from_db")
+
+
+@contextmanager
+def _phase(label: str):
+    """分階段計時：進入印 [階段] label ...，結束印 [完成] label（耗時 Ns）。"""
+    logger.info("[階段] %s ...", label)
+    t0 = time.perf_counter()
+    yield
+    logger.info("[完成] %s（耗時 %.1fs）", label, time.perf_counter() - t0)
 
 
 # ── 變動偵測（指紋 + rebuild_meta）────────────────────────────
@@ -86,26 +97,33 @@ def refresh_road_risk(engine, raw_all: dict, normalized: dict) -> None:
 
 def rebuild_full(engine, skip_graph_tables: bool) -> None:
     """roads 變動：完整重建 graph pkl + road_risk (+ graph_* 表)。"""
-    roads = load_roads_gdf_from_db(engine)
-    accidents = load_accidents_from_db(engine)
-    logger.info("build_graph（拓撲修復）...")
-    G = build_graph(roads)
-    save_graph(G, settings.GRAPH_FILE_PATH)
-    raw_all, normalized = compute_risk_from_accidents(accidents, roads, settings)
-    refresh_road_risk(engine, raw_all, normalized)
+    with _phase("讀 DB primary（roads + accidents）"):
+        roads = load_roads_gdf_from_db(engine)
+        accidents = load_accidents_from_db(engine)
+    with _phase("build_graph 拓撲修復 + 寫 taiwan_graph.pkl"):
+        G = build_graph(roads, show_progress=True)
+        save_graph(G, settings.GRAPH_FILE_PATH)
+    with _phase("重算風險 + 刷新 road_risk 表"):
+        raw_all, normalized = compute_risk_from_accidents(accidents, roads, settings)
+        refresh_road_risk(engine, raw_all, normalized)
     if not skip_graph_tables:
-        load_graph_nodes(engine, G)
-        load_graph_edges(engine, G)
-    create_view(engine)
+        with _phase("寫 graph_nodes / graph_edges 表（給 QGIS）"):
+            load_graph_nodes(engine, G)
+            load_graph_edges(engine, G)
+    with _phase("建 roads_with_risk view"):
+        create_view(engine)
 
 
 def rebuild_risk_only(engine) -> None:
     """只有 accidents 變動：跳過 build_graph，只刷新 road_risk。"""
-    roads = load_roads_gdf_from_db(engine)
-    accidents = load_accidents_from_db(engine)
-    raw_all, normalized = compute_risk_from_accidents(accidents, roads, settings)
-    refresh_road_risk(engine, raw_all, normalized)
-    create_view(engine)
+    with _phase("讀 DB primary（roads + accidents）"):
+        roads = load_roads_gdf_from_db(engine)
+        accidents = load_accidents_from_db(engine)
+    with _phase("重算風險 + 刷新 road_risk 表"):
+        raw_all, normalized = compute_risk_from_accidents(accidents, roads, settings)
+        refresh_road_risk(engine, raw_all, normalized)
+    with _phase("建 roads_with_risk view"):
+        create_view(engine)
 
 
 def main() -> None:

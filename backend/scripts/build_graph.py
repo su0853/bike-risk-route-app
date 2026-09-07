@@ -44,7 +44,7 @@ def main() -> None:
     save_roads_gdf(roads, settings.ROADS_GDF_PATH)
 
     # 3. 建立帶有路口拓撲的圖
-    G = build_graph(roads)
+    G = build_graph(roads, show_progress=True)
 
     # 4. 連通性報告
     comps = list(nx.connected_components(G))
