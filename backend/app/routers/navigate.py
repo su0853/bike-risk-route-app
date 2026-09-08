@@ -38,6 +38,7 @@ def _to_route_result(r: dict) -> RouteResult:
         geometry=r["geometry"],
         total_distance_m=r["total_distance_m"],
         total_risk_score=r["total_risk_score"],
+        total_climb_m=r.get("total_climb_m", 0.0),
         risk_category=r["risk_category"],
         waypoints=r.get("waypoints", []),
     )
@@ -71,6 +72,7 @@ async def navigate(req: NavigateRequest, request: Request) -> NavigateResponse:
         )
     )
 
+    lambda_slope = req.lambda_slope if req.lambda_slope is not None else settings.LAMBDA_SLOPE
     safety_route = await asyncio.get_event_loop().run_in_executor(
         None,
         find_safest_route,
@@ -78,6 +80,8 @@ async def navigate(req: NavigateRequest, request: Request) -> NavigateResponse:
         req.start.lat, req.start.lon,
         req.end.lat, req.end.lon,
         req.lambda_coef,
+        lambda_slope,
+        settings.SLOPE_DOWNHILL_FACTOR,
     )
 
     try:

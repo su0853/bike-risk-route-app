@@ -8,6 +8,9 @@ class Settings(BaseSettings):
 
     GOOGLE_ROUTES_API_KEY: str = ""
 
+    # OpenTopography（下載 AW3D30 DEM 用；免費申請 https://opentopography.org）
+    OPENTOPOGRAPHY_API_KEY: str = ""
+
     # PostGIS（002 DB-centric）：runtime 一律從 DB 載 roads_gdf / risk_scores（graph 仍讀 pkl cache）。
     # 連線用元件組出；密碼單一值放 backend/.env 的 POSTGRES_PASSWORD。
     # host 預設 localhost（本機 venv）；Docker 由 compose 設 POSTGRES_HOST=postgis。
@@ -38,6 +41,14 @@ class Settings(BaseSettings):
     ROADS_GDF_PATH: str = "data/processed/roads_gdf.pkl"
     RISK_SCORES_PATH: str = "data/processed/risk_scores.json"
 
+    # DEM（AW3D30 30m GeoTIFF；坡度權重用）。缺檔時 pipeline 略過高程、路由退回無坡度。
+    DEM_PATH: str = "data/raw/dem_taiwan.tif"
+    # download_dem 預設下載範圍（台灣本島 + 邊界緩衝；不含金馬）
+    DEM_BBOX_SOUTH: float = 21.85
+    DEM_BBOX_NORTH: float = 25.35
+    DEM_BBOX_WEST: float = 119.90
+    DEM_BBOX_EAST: float = 122.05
+
     # 道路篩選 — 排除不適合自行車的道路類型
     EXCLUDED_FCLASSES: list[str] = [
         "motorway", "motorway_link", "trunk", "trunk_link",
@@ -59,6 +70,12 @@ class Settings(BaseSettings):
     # 路線參數
     LAMBDA_DEFAULT: float = 0.5
     MAX_GOOGLE_ALTERNATIVES: int = 2
+
+    # 坡度成本（§006-1）。成本 = length × (1 + λ_risk×risk + λ_slope×penalty(grade))。
+    # penalty(grade) = max(0, 上坡比例) + SLOPE_DOWNHILL_FACTOR × max(0, 下坡比例)。
+    # grade 為方向坡度 (Δz/length)；10% 上坡 → penalty≈0.1。λ_slope=0 等同關閉坡度。
+    LAMBDA_SLOPE: float = 3.0
+    SLOPE_DOWNHILL_FACTOR: float = 0.0   # 下坡懲罰係數（0=忽略下坡；>0 可懲罰陡下坡煞車風險）
 
     # 坐標系統
     CRS_METRIC: int = 3857

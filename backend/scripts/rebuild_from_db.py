@@ -28,6 +28,7 @@ from app.services.db_source import (
     load_roads_gdf_from_db,
     make_engine,
 )
+from app.services.elevation import attach_elevation
 from app.services.graph_builder import build_graph, save_graph
 from app.services.risk_engine import compute_risk_from_accidents
 from scripts.load_to_postgis import (
@@ -100,8 +101,11 @@ def rebuild_full(engine, skip_graph_tables: bool) -> None:
     with _phase("讀 DB primary（roads + accidents）"):
         roads = load_roads_gdf_from_db(engine)
         accidents = load_accidents_from_db(engine)
-    with _phase("build_graph 拓撲修復 + 寫 taiwan_graph.pkl"):
+    with _phase("build_graph 拓撲修復"):
         G = build_graph(roads, show_progress=True)
+    with _phase("附掛高程 z + 邊坡度（DEM；缺檔則略過）"):
+        attach_elevation(G, settings.DEM_PATH)
+    with _phase("寫 taiwan_graph.pkl"):
         save_graph(G, settings.GRAPH_FILE_PATH)
     with _phase("重算風險 + 刷新 road_risk 表"):
         raw_all, normalized = compute_risk_from_accidents(accidents, roads, settings)

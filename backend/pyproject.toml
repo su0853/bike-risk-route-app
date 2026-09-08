@@ -38,6 +38,9 @@ db = [                       # 002 PostGIS：load_to_postgis.py 的 to_postgis/r
     "geoalchemy2>=0.14,<1",
     "psycopg[binary]>=3.1,<4",
 ]
+dem = [                      # 006-1 坡度：讀 DEM GeoTIFF 取樣高程（manylinux wheel，自帶 GDAL）
+    "rasterio>=1.3,<2",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]

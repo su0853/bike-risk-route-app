@@ -11,6 +11,8 @@ class NavigateRequest(BaseModel):
     start: Coordinate
     end: Coordinate
     lambda_coef: float = Field(default=0.5, ge=0.0, le=5.0)
+    # None → 用 settings.LAMBDA_SLOPE（DEM 有 z 時預設啟用坡度）；顯式 0 可關閉
+    lambda_slope: float | None = Field(default=None, ge=0.0, le=20.0)
 
 
 class GeoJSONGeometry(BaseModel):
@@ -23,6 +25,7 @@ class RouteResult(BaseModel):
     geometry: GeoJSONGeometry
     total_distance_m: float
     total_risk_score: float  # 0–1 長度加權平均
+    total_climb_m: float = 0.0  # 沿路徑累積爬升（公尺）；無高程時為 0
     risk_category: str  # "low" | "medium" | "high"
     waypoints: list[list[float]]  # [[lat, lon]] for react-native-maps
 

@@ -85,6 +85,7 @@ Geofabrik 的 OSM 道路萃取，EPSG:3857，約 815,690 條 LineString。
 | node id | `(rounded_x, rounded_y)` int tuple | 座標以 1m 精度捨入後的整數對；路口共享同一 id |
 | 屬性 `x` | float | 原始 EPSG:3857 x 座標 |
 | 屬性 `y` | float | 原始 EPSG:3857 y 座標 |
+| 屬性 `z` | float | 高程（公尺，DEM 取樣）。**選用**：只有跑過 `download_dem` + rebuild 才有；否則不存在。 |
 
 **邊（edge）**
 
@@ -94,9 +95,12 @@ Geofabrik 的 OSM 道路萃取，EPSG:3857，約 815,690 條 LineString。
 | `fclass` | str | 功能分類 |
 | `length_m` | float | 該段長度（公尺） |
 | `oneway` | str | 單行（`B`/`F`/`T`） |
+| `grade_abs` | float｜None | 無方向坡度 `|Δz|/length_m`（供 QGIS/統計）。**選用**：無 DEM 時為 None。路由成本用的是**方向**坡度，於查詢時由兩端 `z` 現算，不存邊上。 |
 | `geometry` | LineString | 該段幾何（EPSG:3857） |
 
 > MultiGraph：兩節點間可有多條平行邊。KDTree 以節點的 `x,y` 建立，供最近節點查詢。
+
+**高程 / 坡度資料來源（選用，§006-1）**：`z` 由 `scripts.download_dem` 下載的 DEM GeoTIFF（預設 OpenTopography **AW3D30 30m**，EPSG:4326）取樣而來，`elevation.attach_elevation` 於 rebuild 時把節點座標轉 4326 後對 DEM band 取值。缺 DEM 時整步略過、路由退回無坡度（`LAMBDA_SLOPE` 不生效）。要換更準的 DEM（如國土測繪 20m）只需替換 `DEM_PATH` 指向的檔案。
 
 ---
 

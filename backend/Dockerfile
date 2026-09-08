@@ -8,10 +8,11 @@ WORKDIR /app
 
 # 先裝依賴 + app 套件（editable）。data/ 由 .dockerignore 排除、runtime 掛載，不進 image。
 # [db]：DB-centric（002）下 runtime 一律連 PostGIS，需 sqlalchemy/geoalchemy2/psycopg。
+# [dem]：006-1 坡度權重，rebuild_from_db 讀 DEM 取樣高程需 rasterio（manylinux wheel）。
 COPY pyproject.toml ./
 COPY app ./app
 COPY scripts ./scripts
-RUN pip install --no-cache-dir -e ".[db]"
+RUN pip install --no-cache-dir -e ".[db,dem]"
 
 EXPOSE 8000
 

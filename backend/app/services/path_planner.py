@@ -25,6 +25,9 @@ def apply_risk_weights(
     回傳 G 的副本，加上 risk_weight 邊屬性：
     risk_weight = length_m × (1 + λ × normalized_risk)
     以邊的 osm_id (str) 查詢 risk_scores。
+
+    註：find_safest_route 已改用 make_cost_fn（callable weight，免整圖 copy、支援方向坡度）；
+    本函式保留給 notebook / 分析用途。
     """
     G_w = G.copy()
     for u, v, k, data in G_w.edges(data=True, keys=True):
@@ -33,6 +36,41 @@ def apply_risk_weights(
         length_m = _edge_length(data)
         G_w[u][v][k]["risk_weight"] = length_m * (1.0 + lambda_coef * risk)
     return G_w
+
+
+def make_cost_fn(
+    G: nx.MultiGraph,
+    risk_scores: dict[str, float],
+    lambda_risk: float,
+    lambda_slope: float = 0.0,
+    downhill_factor: float = 0.0,
+):
+    """NetworkX weight callable：cost = length × (1 + λ_risk×risk + λ_slope×penalty(grade))。
+
+    方向坡度 grade = (z_v - z_u)/length（u→v；>0 上坡）；penalty = max(0,grade) +
+    downhill_factor×max(0,-grade)。節點無 z 或 λ_slope=0 時退回純長度+風險（與舊行為一致）。
+    MultiGraph：對平行邊取最小成本。
+    """
+    nodes = G.nodes
+
+    def weight(u, v, keydict):
+        zu = nodes[u].get("z")
+        zv = nodes[v].get("z")
+        has_slope = lambda_slope and zu is not None and zv is not None
+        best = None
+        for data in keydict.values():
+            length = _edge_length(data)
+            osm_id = data.get("osm_id")
+            risk = risk_scores.get(str(osm_id), 0.0) if osm_id else 0.0
+            cost = length * (1.0 + lambda_risk * risk)
+            if has_slope and length > 0:
+                grade = (zv - zu) / length
+                penalty = max(0.0, grade) + downhill_factor * max(0.0, -grade)
+                cost += length * lambda_slope * penalty
+            best = cost if best is None else min(best, cost)
+        return best
+
+    return weight
 
 
 def compute_route_stats(
@@ -44,6 +82,7 @@ def compute_route_stats(
     geometries = []
     total_distance_m = 0.0
     weighted_risk_sum = 0.0
+    total_climb_m = 0.0  # 沿路徑方向的正高程增量總和（爬升）
 
     for i in range(len(node_path) - 1):
         u, v = node_path[i], node_path[i + 1]
@@ -54,6 +93,11 @@ def compute_route_stats(
 
         total_distance_m += length_m
         weighted_risk_sum += risk * length_m
+
+        zu = G.nodes[u].get("z")
+        zv = G.nodes[v].get("z")
+        if zu is not None and zv is not None and zv > zu:
+            total_climb_m += zv - zu
 
         geom = edge_data.get("geometry")
         if geom is not None:
@@ -87,6 +131,7 @@ def compute_route_stats(
         },
         "total_distance_m": total_distance_m,
         "total_risk_score": total_risk_score,
+        "total_climb_m": total_climb_m,
         "risk_category": categorize_risk(total_risk_score),
         "waypoints": [[lat, lon] for lon, lat in coords_wgs84],
     }
@@ -108,8 +153,13 @@ def find_safest_route(
     end_lat: float,
     end_lon: float,
     lambda_coef: float = 0.5,
+    lambda_slope: float = 0.0,
+    downhill_factor: float = 0.0,
 ) -> dict | None:
-    """Dijkstra + 風險加權，找最安全路線。"""
+    """Dijkstra + 風險（+ 選用坡度）加權，找最安全路線。
+
+    lambda_slope>0 且節點有 z 時併入方向坡度成本；否則等同純風險加權（舊行為）。
+    """
     start_node = get_nearest_node(G, start_lat, start_lon)
     end_node = get_nearest_node(G, end_lat, end_lon)
 
@@ -117,11 +167,11 @@ def find_safest_route(
         logger.warning("Start and end nodes are the same")
         return None
 
-    G_w = apply_risk_weights(G, risk_scores, lambda_coef)
+    weight_fn = make_cost_fn(G, risk_scores, lambda_coef, lambda_slope, downhill_factor)
 
     try:
         node_path = nx.shortest_path(
-            G_w, source=start_node, target=end_node, weight="risk_weight"
+            G, source=start_node, target=end_node, weight=weight_fn
         )
     except nx.NetworkXNoPath:
         logger.warning("No path between %s and %s", start_node, end_node)

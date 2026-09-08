@@ -116,9 +116,11 @@ def load_road_risk(engine, roads: gpd.GeoDataFrame | None) -> None:
 
 def load_graph_nodes(engine, G: nx.MultiGraph) -> None:
     logger.info("graph_nodes: 建 %d 節點...", G.number_of_nodes())
-    rows = [{"node_id": _node_id(n), "x": d["x"], "y": d["y"], "geom": Point(d["x"], d["y"])}
+    rows = [{"node_id": _node_id(n), "x": d["x"], "y": d["y"],
+             "z": d.get("z"), "geom": Point(d["x"], d["y"])}
             for n, d in G.nodes(data=True)]
     g = gpd.GeoDataFrame(rows, geometry="geom", crs=SRID)
+    g["z"] = pd.to_numeric(g["z"], errors="coerce")  # 無 DEM 時全 NaN，仍保持數值欄（供 QGIS 分級）
     g.to_postgis("graph_nodes", engine, if_exists="replace", index=False, chunksize=100000)
     _exec(
         engine,
@@ -136,9 +138,11 @@ def load_graph_edges(engine, G: nx.MultiGraph) -> None:
         "osm_id": str(d.get("osm_id", "")),
         "oneway": d.get("oneway", ""),
         "length_m": float(d.get("length_m", 0.0)),
+        "grade_abs": d.get("grade_abs"),
         "geom": d.get("geometry"),
     } for u, v, d in G.edges(data=True)]
     g = gpd.GeoDataFrame(rows, geometry="geom", crs=SRID)
+    g["grade_abs"] = pd.to_numeric(g["grade_abs"], errors="coerce")  # 無 DEM 時全 NaN，仍保持數值欄
     g.to_postgis("graph_edges", engine, if_exists="replace", index=False, chunksize=100000)
     _exec(
         engine,
