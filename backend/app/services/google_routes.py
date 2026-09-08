@@ -17,6 +17,7 @@ async def fetch_cycling_routes(
 ) -> list[dict]:
     """
     呼叫 Google Routes API v2 取得自行車候選路線。
+    max_alternatives = 回傳的 Google 路線「總數」上限（含主路線）；<=1 則只取主路線。
     回傳原始 route dict 列表。
     """
     if not api_key:
@@ -27,7 +28,7 @@ async def fetch_cycling_routes(
         "origin": {"location": {"latLng": {"latitude": start[0], "longitude": start[1]}}},
         "destination": {"location": {"latLng": {"latitude": end[0], "longitude": end[1]}}},
         "travelMode": "BICYCLE",
-        "computeAlternativeRoutes": max_alternatives > 0,
+        "computeAlternativeRoutes": max_alternatives > 1,
     }
 
     headers = {
@@ -47,7 +48,7 @@ async def fetch_cycling_routes(
         data = resp.json()
         routes = data.get("routes", [])
         logger.info("Google Routes returned %d routes", len(routes))
-        return routes[: max_alternatives + 1]
+        return routes[:max_alternatives]  # 總數上限（含主路線）
 
     except httpx.TimeoutException:
         logger.error("Google Routes API timeout")

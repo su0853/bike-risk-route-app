@@ -69,7 +69,7 @@ class Settings(BaseSettings):
 
     # 路線參數
     LAMBDA_DEFAULT: float = 0.5
-    MAX_GOOGLE_ALTERNATIVES: int = 2
+    MAX_GOOGLE_ALTERNATIVES: int = 2   # Google 路線總數上限（含主路線）；2 → google_0/1
 
     # 坡度成本（§006-1）。成本 = length × (1 + λ_risk×risk + λ_slope×penalty(grade))。
     # penalty(grade) = max(0, 上坡比例) + SLOPE_DOWNHILL_FACTOR × max(0, 下坡比例)。
