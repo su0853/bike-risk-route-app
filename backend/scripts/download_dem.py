@@ -25,6 +25,9 @@ from app.config import settings
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("download_dem")
 
+# httpx 的 INFO log 會把完整請求 URL（含 ?API_Key=...）印出來 → 壓到 WARNING 避免外洩金鑰。
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 API_URL = "https://portal.opentopography.org/API/globaldem"
 
 
