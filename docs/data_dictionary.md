@@ -20,6 +20,7 @@
 | `data/cleaned/*.csv` | `etl_accidents.py` | 清洗後自行車事故 | 4326（lon/lat 欄） |
 | `data/raw/accidents_epsg3857.gpkg` | `prepare_accidents_gpkg.py` | 事故點（供 snap） | 3857 |
 | `data/processed/risk_scores.json` | `process_accidents.py` → `build_risk_scores` | 路段風險分數 | —（key 為 osm_id） |
+| `data/raw/dem_taiwan.tif` | `download_dem.py`（OpenTopography） | DEM 高程柵格（坡度用，選用） | 4326 |
 
 > **對齊鍵**：`osm_id` 是 roads / risk_scores / graph 邊三者的共同鍵。事故對應（snap）後也以
 > osm_id 累加到路段。
@@ -159,3 +160,39 @@ P99 截斷正規化到 `[0,1]`。公式細節見 [`docs/risk_score_methodology.m
 > **只存 normalized**：raw density **未持久化**。需要 raw（如風險分佈探索、校準）時得重算
 > （`aggregate_edge_risk`）。backlog 002 的 `road_risk` 表規劃**同時存 raw + normalized**，
 > 即為補上這點。
+
+---
+
+## 7. DEM 高程柵格 `data/raw/dem_taiwan.tif`（選用，坡度權重用）
+
+由 `scripts/download_dem.py` 從 **OpenTopography** 下載的 **ALOS AW3D30 30m** DEM（GeoTIFF）。
+這是**柵格（raster）**而非表格，沒有「欄位」，其「規格」= 柵格屬性。缺此檔時管線略過高程、
+路由退回無坡度（見 [`ARCHITECTURE`](../ARCHITECTURE.md) 與坡度成本設定 `LAMBDA_SLOPE`）。
+
+**柵格規格**（實測 2026-09；bbox 為 config `DEM_BBOX_*`，台灣本島，不含金馬）：
+
+| 項目 | 值 | 說明 |
+|------|-----|------|
+| 格式 | GeoTIFF（單一檔，57 MB） | |
+| CRS | **EPSG:4326**（經緯度） | 與內部 3857 不同 → 取樣時節點座標先轉 4326（見 §3） |
+| 波段 | 1 | 高程值 |
+| 資料型別 | `int16` | 整數公尺，不含小數 |
+| 尺寸 | 7740 × 12600（≈ 97.5M px） | |
+| 像素大小 | 0.000278°（≈ **30.9 m**） | AW3D30 名目 30m |
+| 範圍 bounds | W119.90 S21.85 E122.05 N25.35 | 一個矩形，含台灣周邊大片海域 |
+| 值域 | **−88 ~ 3937 m** | 高值近玉山（3952m）；負值為海岸雜訊 |
+| **nodata** | **None（未設）** | ⚠️ **海面以 `0` 表示，不是 nodata** |
+
+**特性 / 需注意（幫助理解資料）**：
+- **海面 = 0，而非 nodata**：因為 nodata 未設，矩形 bbox 內的大片海域值都是 `0`。所以整張
+  raster 的**中位數是 0**（矩形大半是海），但**路網節點取樣到的 `z` 中位數是 36 m**（道路都在陸地）。
+  兩者差異純粹來自「含不含海」，不是 bug。
+- **負值是海岸雜訊**：有 0.089% 的像素 < 0（低到 −88m），台灣無陸地低於海平面，屬 AW3D30 在
+  海岸/水體的少數誤差。路網節點只掃到最低約 −65m（道路不會落在最糟的像素上），佔比極小、不影響路由。
+- **30m 解析度的含意**：對很短的路段（graph edge 常被拓撲修復切得很短），30m DEM 取兩端高差算坡度
+  容易**放大雜訊**（短距離的小高差 → 大百分比）。`elevation_slope_exploration` notebook 量化到
+  長度加權平均坡度偏高（~4.5%），部分即此雜訊 → 見 notes 006 §1 未決「沿線多點取樣 / 短邊門檻」。
+
+**如何被使用**：`app/services/elevation.py::attach_elevation` 讀此檔，為每個 graph 節點取 `z`、
+每條邊算 `grade_abs`（見 §3 的節點/邊屬性）。**換更準的 DEM**（如國土測繪 20m）只要把檔案放到
+同一路徑（`DEM_PATH`），其餘程式不動。
