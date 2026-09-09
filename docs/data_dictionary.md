@@ -1,6 +1,6 @@
 # 資料欄位說明（Data Dictionary）
 
-本文件說明管線中各資料檔的**欄位、型別、意義與座標系**，作為 PostGIS schema（見 backlog 002）
+本文件說明管線中各資料檔的**欄位、型別、意義與座標系**，作為 PostGIS schema
 與資料檢視的依據。管線整體流程見 [`ARCHITECTURE.md`](../ARCHITECTURE.md)，欄位篩選邏輯見
 `backend/app/services/graph_builder.py`、`risk_engine.py`。
 
@@ -70,7 +70,7 @@ Geofabrik 的 OSM 道路萃取，EPSG:3857，約 815,690 條 LineString。
 | `geometry` | LineString | 幾何（EPSG:3857） |
 
 > **可攜性注意**：`roads_gdf.pkl` 以 pickle + pandas dtype 序列化，**跨 pandas 版本可能無法反序列化**
-> （已實測到 `StringDtype` 相容性錯誤）。這是 backlog 002 導入 PostGIS 的動機之一——用資料庫存這些
+> （已實測到 `StringDtype` 相容性錯誤）。這是導入 PostGIS 的動機之一——用資料庫存這些
 > 表格資料，取代脆弱的 pkl。
 
 ---
@@ -158,8 +158,8 @@ Geofabrik 的 OSM 道路萃取，EPSG:3857，約 815,690 條 LineString。
 P99 截斷正規化到 `[0,1]`。公式細節見 [`docs/risk_score_methodology.md`](risk_score_methodology.md)。
 
 > **只存 normalized**：raw density **未持久化**。需要 raw（如風險分佈探索、校準）時得重算
-> （`aggregate_edge_risk`）。backlog 002 的 `road_risk` 表規劃**同時存 raw + normalized**，
-> 即為補上這點。
+> （`aggregate_edge_risk`）。PostGIS 的 `road_risk` 表**同時存 raw + normalized**，
+> 補上這點。
 
 ---
 

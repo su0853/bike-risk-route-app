@@ -3,7 +3,7 @@
 探索 / 展示 / 除錯用的 Jupyter notebook。**不取代正式 pipeline**（正式邏輯在
 `backend/app/services`、`backend/scripts`）；notebook 只 **import 它們、不複製一份**。
 
-對應 backlog `005 JupyterLab`。
+整體規劃記錄於專案開發筆記。
 
 ## 執行環境
 
@@ -64,7 +64,7 @@ L2 / L3 的輸入檔**不進 git**，由 `docs/deployment.md` 的流程取得（
   naive 最大連通比 `15.4% → build_graph 92.9%`。
 
 ### `risk_distribution_exploration.ipynb`
-- **purpose**：觀察風險分數分佈（零膨脹 / 右偏 / 截斷點 / 短路段放大），餵 backlog 004 校準；
+- **purpose**：觀察風險分數分佈（零膨脹 / 右偏 / 截斷點 / 短路段放大），供風險模型校準；
   同時解釋「QGIS 用 Jenks 前幾組全是 0」的現象。
 - **needs**：**postgis 起著 + 已跑 `load_to_postgis`**（見 `docs/deployment.md` §5）；直接查 `road_risk` 表。
 - **scale**：L3。

@@ -333,7 +333,7 @@ Data Source Manager → PostgreSQL → New：host `localhost`、port `5432`、db
 
 > **著色提醒**：約 95% 道路 `normalized_risk = 0`，直接用 Natural Breaks (Jenks) 會讓前幾組全是
 > `0.000–0.000`。先對圖層加過濾 **`normalized_risk > 0`** 再分級，才看得到層次。這是資料本身的零膨脹，
-> 屬風險校準（backlog 004）範圍。
+> 屬風險校準範圍。
 
 ### 5.4 實務註記
 
