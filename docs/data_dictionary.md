@@ -101,7 +101,7 @@ Geofabrik 的 OSM 道路萃取，EPSG:3857，約 815,690 條 LineString。
 
 > MultiGraph：兩節點間可有多條平行邊。KDTree 以節點的 `x,y` 建立，供最近節點查詢。
 
-**高程 / 坡度資料來源（選用，§006-1）**：`z` 由 `scripts.download_dem` 下載的 DEM GeoTIFF（預設 OpenTopography **AW3D30 30m**，EPSG:4326）取樣而來，`elevation.attach_elevation` 於 rebuild 時把節點座標轉 4326 後對 DEM band 取值。缺 DEM 時整步略過、路由退回無坡度（`LAMBDA_SLOPE` 不生效）。要換更準的 DEM（如國土測繪 20m）只需替換 `DEM_PATH` 指向的檔案。
+**高程 / 坡度資料來源（選用）**：`z` 由 `scripts.download_dem` 下載的 DEM GeoTIFF（預設 OpenTopography **AW3D30 30m**，EPSG:4326）取樣而來，`elevation.attach_elevation` 於 rebuild 時把節點座標轉 4326 後對 DEM band 取值。缺 DEM 時整步略過、路由退回無坡度（`LAMBDA_SLOPE` 不生效）。要換更準的 DEM（如國土測繪 20m）只需替換 `DEM_PATH` 指向的檔案。
 
 ---
 
@@ -169,7 +169,7 @@ P99 截斷正規化到 `[0,1]`。公式細節見 [`docs/risk_score_methodology.m
 這是**柵格（raster）**而非表格，沒有「欄位」，其「規格」= 柵格屬性。缺此檔時管線略過高程、
 路由退回無坡度（見 [`ARCHITECTURE`](../ARCHITECTURE.md) 與坡度成本設定 `LAMBDA_SLOPE`）。
 
-**柵格規格**（實測 2026-09；bbox 為 config `DEM_BBOX_*`，台灣本島，不含金馬）：
+**柵格規格**（量測值 2026-09；bbox 為 config `DEM_BBOX_*`，台灣本島，不含金馬）：
 
 | 項目 | 值 | 說明 |
 |------|-----|------|
@@ -181,17 +181,17 @@ P99 截斷正規化到 `[0,1]`。公式細節見 [`docs/risk_score_methodology.m
 | 像素大小 | 0.000278°（≈ **30.9 m**） | AW3D30 名目 30m |
 | 範圍 bounds | W119.90 S21.85 E122.05 N25.35 | 一個矩形，含台灣周邊大片海域 |
 | 值域 | **−88 ~ 3937 m** | 高值近玉山（3952m）；負值為海岸雜訊 |
-| **nodata** | **None（未設）** | ⚠️ **海面以 `0` 表示，不是 nodata** |
+| nodata | None（未設） | 海面以 `0` 表示，非 nodata |
 
-**特性 / 需注意（幫助理解資料）**：
+**特性與注意事項**：
 - **海面 = 0，而非 nodata**：因為 nodata 未設，矩形 bbox 內的大片海域值都是 `0`。所以整張
-  raster 的**中位數是 0**（矩形大半是海），但**路網節點取樣到的 `z` 中位數是 36 m**（道路都在陸地）。
-  兩者差異純粹來自「含不含海」，不是 bug。
+  raster 的中位數是 0（矩形大半是海），但路網節點取樣到的 `z` 中位數是 36 m（道路都在陸地）。
+  兩者差異來自「含不含海」，並非資料錯誤。
 - **負值是海岸雜訊**：有 0.089% 的像素 < 0（低到 −88m），台灣無陸地低於海平面，屬 AW3D30 在
   海岸/水體的少數誤差。路網節點只掃到最低約 −65m（道路不會落在最糟的像素上），佔比極小、不影響路由。
 - **30m 解析度的含意**：對很短的路段（graph edge 常被拓撲修復切得很短），30m DEM 取兩端高差算坡度
-  容易**放大雜訊**（短距離的小高差 → 大百分比）。`elevation_slope_exploration` notebook 量化到
-  長度加權平均坡度偏高（~4.5%），部分即此雜訊 → 見 notes 006 §1 未決「沿線多點取樣 / 短邊門檻」。
+  容易放大雜訊（短距離的小高差 → 大百分比）。長度加權平均坡度因而偏高（約 4.5%），部分源自此雜訊；
+  屬坡度成本的後續校準項目（沿線多點取樣、短邊長度門檻）。
 
 **如何被使用**：`app/services/elevation.py::attach_elevation` 讀此檔，為每個 graph 節點取 `z`、
 每條邊算 `grade_abs`（見 §3 的節點/邊屬性）。**換更準的 DEM**（如國土測繪 20m）只要把檔案放到
