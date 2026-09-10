@@ -87,6 +87,9 @@ Dijkstra + 風險加權圖                         Google Routes API v2
                      /api/navigate
 ```
 
+> 坡度（標準步驟，未提供 DEM 時略過）：`download_dem` → `dem_taiwan.tif`；`rebuild_from_db` 以
+> `attach_elevation` 把高程 `z` / 坡度 `grade_abs` 附掛到圖與衍生表（見 §3.3）。
+
 ---
 
 ## 3. 離線資料預處理
@@ -191,6 +194,19 @@ P99 截斷 + [0, 1] 縮放：
 
 ---
 
+### 3.3 高程附掛（坡度用；標準步驟，未提供 DEM 時略過）（`scripts/download_dem.py` + `elevation.attach_elevation`）
+
+**輸入**：DEM GeoTIFF（`scripts/download_dem.py` 從 OpenTopography 下載 AW3D30 30m，EPSG:4326；規格見 [`docs/data_dictionary.md`](docs/data_dictionary.md) §7）。
+
+`scripts/rebuild_from_db` 在建圖後、寫 pkl 前呼叫 `elevation.attach_elevation`：
+
+- 節點座標 EPSG:3857 → 4326，向量化索引 DEM band 取高程，寫成節點屬性 `z`。未提供 DEM 時整步略過，路由退回無坡度。
+- 每條邊算 `grade_abs = |z_v − z_u| / length_m`（無方向，供 QGIS / 統計）。
+
+**輸出**：`taiwan_graph.pkl` 的節點帶 `z`、邊帶 `grade_abs`；`graph_nodes` / `graph_edges` 表同步加 `z` / `grade_abs` 欄。路由成本使用的**方向**坡度於查詢時由兩端 `z` 現算（見 §4.2），不存在邊上。
+
+---
+
 ## 4. 後端服務架構
 
 核心邏輯集中在 `app/services/`；`scripts/`（離線）與 API routers（runtime）都只是呼叫這些模組。
@@ -201,12 +217,13 @@ P99 截斷 + [0, 1] 縮放：
 |------|------------------|----------|
 | `graph_builder.py` | 讀/篩選道路、`build_graph`（拓撲修復，§3.1）、KDTree（`build_node_tree` / `get_nearest_node`）、graph & roads_gdf 存取 | 離線建圖 + runtime 節點吸附 |
 | `risk_engine.py` | `load_accidents`、`compute_accident_weights`、`assign_accidents_to_roads`（snap）、`aggregate_edge_risk`（raw 密度）、`normalize_risk_scores`（§3.2） | 離線風險計算 |
-| `path_planner.py` | `apply_risk_weights`、`find_safest_route`（Dijkstra）、`compute_route_stats`、風險分類 | runtime 安全路線 |
+| `path_planner.py` | `make_cost_fn`（風險+坡度成本）、`find_safest_route`（Dijkstra）、`compute_route_stats`、風險分類 | runtime 安全路線 |
 | `google_routes.py` | `fetch_cycling_routes`（Google Routes API v2） | runtime 候選路線 |
 | `route_evaluator.py` | Google polyline → snap 道路 → 風險標註、`evaluate_all_routes` | runtime 路線評估 |
 | `db_source.py` | 從 PostGIS 載 `roads_gdf` / `risk_scores`（runtime）；`load_accidents_from_db`（供 rebuild） | runtime 啟動 + 衍生 |
+| `elevation.py` | `attach_elevation`（DEM 取樣 → 節點 `z`、邊 `grade_abs`）、`dem_available` | 離線高程附掛（rebuild） |
 
-- **離線**（scripts 進入點）：`graph_builder` + `risk_engine`。
+- **離線**（scripts 進入點）：`graph_builder` + `risk_engine` + `elevation`。
 - **runtime**（API 進入點）：`path_planner` + `google_routes` + `route_evaluator` + `graph_builder` 的 KDTree。
 
 request 進來後的服務串接（對照 §1 的圖）：
@@ -215,7 +232,7 @@ request 進來後的服務串接（對照 §1 的圖）：
 POST /api/navigate
   ├─ get_nearest_node()×2        (graph_builder KDTree：起/終點 → 圖節點)
   ├─ asyncio.gather:
-  │    ├─ find_safest_route()     (path_planner：apply_risk_weights → Dijkstra → compute_route_stats)
+  │    ├─ find_safest_route()     (path_planner：make_cost_fn → Dijkstra → compute_route_stats)
   │    └─ fetch_cycling_routes()  (google_routes：Google 候選)
   └─ evaluate_all_routes()        (route_evaluator：Google polyline → snap roads_gdf → 風險 → 合併排序)
 ```
@@ -280,31 +297,37 @@ nearest_node = _node_ids[idx]
 
 ### 4.2 路線規劃引擎（`app/services/path_planner.py`）
 
-#### 風險加權邊
+#### 成本函數（風險 + 坡度）
 
 ```python
-risk_weight = length_m × (1 + λ × normalized_risk)
+cost(u→v) = length_m × (1 + λ_risk × normalized_risk + λ_slope × penalty(grade))
+grade      = (z_v − z_u) / length_m          # 方向坡度，> 0 為上坡
+penalty    = max(0, grade) + downhill_factor × max(0, −grade)
 ```
 
-- `λ`（lambda_coef）：安全偏好強度，預設 0.5，前端可調整至 5.0
-- `normalized_risk = 0`：純距離最短路線
-- `λ` 越大：路線越積極繞開高風險路段（距離可能增加）
+- `λ_risk`（`lambda_coef`）：安全偏好強度，預設 0.5，前端可調至 5.0。`normalized_risk = 0` 時為純距離最短。
+- `λ_slope`（`LAMBDA_SLOPE`）：坡度偏好強度，預設 3.0（10% 上坡約使成本 ×1.3）。`downhill_factor`（`SLOPE_DOWNHILL_FACTOR`）預設 0，即不懲罰下坡。
+- **方向性**：`grade` 由邊兩端節點的 `z` 現算，上坡與下坡成本不同。
+- **相容 / 回退**：節點無 `z`（未載 DEM）或 `λ_slope = 0` 時，坡度項為 0，退回純距離＋風險。
 
 #### Dijkstra 路線
 
 ```python
-G_w = apply_risk_weights(G, risk_scores, lambda_coef)
-node_path = nx.shortest_path(G_w, source, target, weight="risk_weight")
+weight_fn = make_cost_fn(G, risk_scores, lambda_coef, lambda_slope, downhill_factor)
+node_path = nx.shortest_path(G, source, target, weight=weight_fn)
 ```
+
+成本以 NetworkX callable weight 於查詢時計算，不複製整圖；MultiGraph 對平行邊取最小成本。
 
 #### 路線統計與幾何
 
 遍歷 `node_path` 的每條邊：
 
 1. **長度加權風險**：`total_risk = Σ(risk × length) / Σlength`
-2. **幾何合併**：取每條邊的 `geometry` 屬性（EPSG:3857 LineString）
-3. **方向修正**：當 Dijkstra 從 v 往 u 走，但幾何儲存方向是 u→v 時，反轉座標
-4. **座標轉換**：EPSG:3857 → WGS84（EPSG:4326）
+2. **累積爬升**：`total_climb_m = Σ max(0, z_v − z_u)`（沿路徑，僅計上坡；無 `z` 時為 0）
+3. **幾何合併**：取每條邊的 `geometry` 屬性（EPSG:3857 LineString）
+4. **方向修正**：當 Dijkstra 從 v 往 u 走，但幾何儲存方向是 u→v 時，反轉座標
+5. **座標轉換**：EPSG:3857 → WGS84（EPSG:4326）
 
 #### 風險等級分類
 
@@ -325,9 +348,10 @@ POST https://routes.googleapis.com/directions/v2:computeRoutes
 Header: X-Goog-FieldMask: routes.legs.polyline,routes.distanceMeters,routes.duration
 Body:
   travelMode: BICYCLE
-  computeAlternativeRoutes: true
+  computeAlternativeRoutes: (MAX_GOOGLE_ALTERNATIVES > 1)
 ```
 
+- 回傳的 Google 路線數上限 = `MAX_GOOGLE_ALTERNATIVES`（含主路線，預設 2 → `google_0` / `google_1`）
 - API Key 未設定時：靜默跳過，僅回傳本地安全路線
 - 逾時（15 秒）或 API 錯誤：回傳空列表，不影響安全路線
 
@@ -382,6 +406,7 @@ Body:
 |------|------|------|
 | `start` / `end` | WGS84 座標 | 台灣範圍內（lat 21.5–25.5，lon 119–122.5） |
 | `lambda_coef` | 安全偏好強度 | 0.0 ~ 5.0（預設 0.5） |
+| `lambda_slope` | 坡度偏好強度（選填；未填用 `LAMBDA_SLOPE`，0 可關閉） | 0.0 ~ 20.0 |
 
 **回應**：
 
@@ -397,6 +422,7 @@ Body:
       },
       "total_distance_m": 3882.3,
       "total_risk_score": 0.0019,
+      "total_climb_m": 112.4,
       "risk_category": "low",
       "waypoints": [[25.017, 121.539], ...]
     },
@@ -418,6 +444,7 @@ Body:
 | `geometry.coordinates` | GeoJSON 標準順序 `[lon, lat]` |
 | `waypoints` | React Native Maps 用，`[lat, lon]` 順序 |
 | `total_risk_score` | 長度加權平均風險分數，0–1 |
+| `total_climb_m` | 沿路徑累積爬升（公尺）；無高程資料時為 0 |
 | `risk_category` | `low` / `medium` / `high` |
 
 ---
@@ -539,6 +566,11 @@ OSM 資料中同兩節點間可能存在多條平行路段（如雙向道分開�
 | `RISK_CLIP_PERCENTILE` | `99.0` | 正規化截斷百分位數 |
 | `SNAP_TOLERANCE_M` | `20.0` | 事故對應道路的最大距離（公尺）|
 | `LAMBDA_DEFAULT` | `0.5` | 安全路線預設安全偏好強度 |
-| `MAX_GOOGLE_ALTERNATIVES` | `2` | Google Routes 最多替代路線數 |
+| `LAMBDA_SLOPE` | `3.0` | 坡度偏好強度（10% 上坡約 ×1.3；0 關閉坡度）|
+| `SLOPE_DOWNHILL_FACTOR` | `0.0` | 下坡懲罰係數（0 = 不罰下坡）|
+| `MAX_GOOGLE_ALTERNATIVES` | `2` | Google 路線總數上限（含主路線）|
+| `DEM_PATH` | `data/raw/dem_taiwan.tif` | DEM GeoTIFF 路徑（坡度用）|
+| `OPENTOPOGRAPHY_API_KEY` | （空）| `download_dem` 下載 DEM 用 |
+| `DEM_BBOX_SOUTH/NORTH/WEST/EAST` | `21.85/25.35/119.90/122.05` | `download_dem` 下載範圍（台灣本島）|
 
 `lambda_coef` 亦可由前端使用者透過滑桿即時調整（範圍 0–5）。
