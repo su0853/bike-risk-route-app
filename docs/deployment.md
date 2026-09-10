@@ -66,7 +66,10 @@ python -m scripts.download_roads_geofabrik
 # c. 種入 DB primary（原始檔 → DB 的 roads / accidents）
 python -m scripts.load_to_postgis --tables roads,accidents
 
-# d. 由 DB 衍生（拓撲修復 → taiwan_graph.pkl 快取 + road_risk / graph_* / view）
+# d. 下載 DEM（坡度用；需 OPENTOPOGRAPHY_API_KEY，未設可略過 → 無坡度）
+python -m scripts.download_dem
+
+# e. 由 DB 衍生（拓撲修復 → taiwan_graph.pkl + road_risk / graph_* / view；DEM 存在則附掛高程 z/grade）
 python -m scripts.rebuild_from_db
 ```
 
@@ -131,12 +134,14 @@ docker compose build backend
 # 2. 環境變數：一樣需要 backend/.env（見 1.2）；compose 以 env_file 注入
 cp backend/.env.example backend/.env   # 編輯填入 GOOGLE_ROUTES_API_KEY
 
-# 3. 重建資料（一次性；對應 1.3）。cleaned 已 bundle 在 ./backend/data/cleaned，
+# 3. 起 DB + 重建資料（一次性；對應 1.3）。cleaned 已 bundle 在 ./backend/data/cleaned，
 #    隨 volume 掛到 /app/data/cleaned，所以預設不需 CLEANED_CSV_DIR
+docker compose up -d postgis
 docker compose run --rm backend python -m scripts.prepare_accidents_gpkg
 docker compose run --rm backend python -m scripts.download_roads_geofabrik   # 容器內連網下載 ~266MB
-docker compose run --rm backend python -m scripts.build_graph
-docker compose run --rm backend python -m scripts.process_accidents
+docker compose run --rm backend python -m scripts.load_to_postgis --tables roads,accidents
+docker compose run --rm backend python -m scripts.download_dem               # 坡度用；未設 OPENTOPOGRAPHY_API_KEY 可略過
+docker compose run --rm backend python -m scripts.rebuild_from_db
 
 # 4. 啟動 API（publish 8000）
 docker compose up backend
@@ -164,7 +169,7 @@ docker compose run --rm backend python -m scripts.prepare_accidents_gpkg --clean
 - image 只含程式碼 + Python 依賴；**大資料與 secret 不進 image**。
 - `./backend/data` 以 volume 掛載 → raw / processed 產物保存在 host、與本機路徑一致、可保留重用。
 - `CLEANED_CSV_DIR` 是 **compose 的插補變數**（外部 cleaned CSV 路徑），與 app 的 `backend/.env` 是兩件事。
-- 002 PostGIS 之後會在同一個 `docker-compose.yml` 加 `postgis` service（backend service 不變）。
+- PostGIS 已在同一個 `docker-compose.yml` 的 `postgis` service（見 §1.3 / §5）；backend 以 `depends_on` 等待其就緒。
 
 ---
 

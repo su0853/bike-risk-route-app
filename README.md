@@ -79,8 +79,8 @@ docker compose run --rm backend python -m scripts.prepare_accidents_gpkg
 docker compose run --rm backend python -m scripts.download_roads_geofabrik
 docker compose run --rm backend python -m scripts.load_to_postgis --tables roads,accidents
 
-# 選用：下載 DEM 以啟用坡度權重（需 backend/.env 的 OPENTOPOGRAPHY_API_KEY）
-# 略過此步 rebuild 仍可跑，路由自動退回無坡度。
+# 下載 DEM（坡度權重用；需 backend/.env 的 OPENTOPOGRAPHY_API_KEY）
+# 未申請 key 可略過此步：rebuild 仍可跑，路由退回無坡度。
 docker compose run --rm backend python -m scripts.download_dem
 
 # 由 DB 衍生（拓撲修復 → taiwan_graph.pkl 快取 + road_risk / graph_* / view；DEM 存在則附掛高程）
