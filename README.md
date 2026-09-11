@@ -10,7 +10,7 @@ Bike Risk Route App 是一個台灣自行車安全路線規劃 prototype。系�
 
 - 地址搜尋與多候選選擇：前端透過後端 `/api/geocode` proxy 查詢 Nominatim，避免行動端直接呼叫造成 403 或候選誤選。
 - 目前位置起點：前端可用 `expo-location` 取得使用者 GPS 座標。
-- 風險加權安全路線：後端以歷史事故資料計算道路風險，並用 Dijkstra 產生本地安全路線。
+- 風險加權安全路線：後端以歷史事故資料計算道路風險，並用 Dijkstra 產生本地安全路線；提供 DEM 時納入坡度，在有替代路徑時偏好較平緩、減少爬升。
 - Google Routes alternatives：後端呼叫 Google Routes API 取得自行車候選路線，再評估其風險。
 - 前端地圖顯示：Expo / React Native 顯示路線、風險等級、距離與時間。
 - 可重現後端資料管線：本機 Python 或 Docker 重建道路圖與風險分數。
@@ -44,7 +44,7 @@ Frontend (Expo / React Native)
       |  POST /api/navigate
       v
 Backend (FastAPI)
-      |-- Local risk-weighted Dijkstra route
+      |-- Local risk (+slope) weighted Dijkstra route
       |-- Google Routes API alternatives
       |-- Route risk evaluation
       v
@@ -184,6 +184,7 @@ frontend/
 docs/
   deployment.md
   risk_score_methodology.md
+  data_dictionary.md
 
 notebooks/             探索 / 驗證用 Jupyter notebook（.ipynb 進 git）
 
