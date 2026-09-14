@@ -32,6 +32,9 @@ notebook = [
     "matplotlib>=3.8,<4",
     "contextily>=1.5,<2",   # 選用：OSM 底圖
     "mapclassify>=2.6,<3",  # 選用：geopandas 分級著色
+    "h3>=4,<5",             # accident_spatial_autocorrelation：H3 格化
+    "libpysal>=4.9",        # 空間權重 W
+    "esda>=2.5",            # Moran's I / LISA
 ]
 db = [                       # 002 PostGIS：load_to_postgis.py 的 to_postgis/read_postgis
     "sqlalchemy>=2,<3",

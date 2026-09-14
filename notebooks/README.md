@@ -71,3 +71,24 @@ L2 / L3 的輸入檔**不進 git**，由 `docs/deployment.md` 的流程取得（
 - **runtime**：< 1 分鐘。
 - **output**：保留（含圖）。
 - 結果：`risk = 0` 占 `95.49%`；截斷點 P95 / P99 / P99.5 → `1,779 / 356 / 178` 條被壓到 `1.0`。
+
+### `elevation_slope_exploration.ipynb`
+- **purpose**：路網高程 `z` / 坡度 `grade_abs` 分佈、坡度 vs 道路類型，並以北投→淡水的**高程剖面**
+  示範 `λ_slope`（納入坡度、減少爬升）的效果。
+- **needs**：先跑 `download_dem` + `rebuild_from_db`（`taiwan_graph.pkl` 帶 `z`）；風險分數走 DB（postgis 起著）。
+- **scale**：L3。
+- **runtime**：< 1 分鐘（載 graph pkl ~10s）。
+- **output**：保留（含圖）。
+- 結果：z 中位 `36 m`、P99 `1,269 m`；長度加權平均坡度 `4.5%`，最陡類別 `path 12.8%`；
+  高程剖面顯示 `λ_slope=3` 相對 `0` 明顯降低北投→淡水的爬升、距離幾乎不變。
+
+### `accident_spatial_autocorrelation.ipynb`
+- **purpose**：事故點 **H3 格化** → Moran's I / LISA 熱點 / Incremental SA 尺度（res 8/9 主力 + res 10 對照），
+  看事故聚不聚集、熱點在哪、聚集尺度多大。純觀察、不動風險模型。
+- **needs**：**postgis 起著**（`accidents` 表）；依賴 `h3` / `libpysal` / `esda`（在 `[notebook]` extra）。
+- **scale**：L3。
+- **runtime**：< 1 分鐘。
+- **output**：保留（含圖）。
+- 結果：占用格 =1 件比例 res8/9/10 = 36% / 49% / 70%；全域 Moran's I `0.635 → 0.394 → 0.089`
+  （res-10 太細稀釋聚集訊號）；主力採 res 9；Incremental SA 顯示聚集為局部尺度。
+- **caveat**：事故熱點 ≠ 人均風險（無暴露量分母）；顯著性看 Moran's I 效應量而非 p；LISA 為探索性。
